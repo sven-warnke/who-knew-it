@@ -3,8 +3,12 @@ from who_knew_it import api_call
 
 def create_fake_movie_synopsis(info_about_film: str, avoid_examples: list[str]) -> str:
     if avoid_examples:
-        avoid_list_string = "Please also avoid anything that is similar to the following examples:\n"
-        avoid_list_string += "\n\n".format([" " * 4 + example for example in avoid_examples])
+        avoid_list_string = (
+            "Please also avoid anything that is similar to the following examples:\n"
+        )
+        avoid_list_string += "\n\n".join(
+            [" " * 4 + example for example in avoid_examples]
+        )
         avoid_list_string += "\n\n"
 
     else:
@@ -19,7 +23,3 @@ might have of the actual film.
 Please output only the synopsis and nothing else. 
 """
     return api_call.prompt_model(prompt=prompt)
-
-
-
-
