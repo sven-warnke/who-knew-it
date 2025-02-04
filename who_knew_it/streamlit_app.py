@@ -78,7 +78,6 @@ def create_tables_if_not_exist():
 
     with get_cursor() as con:
         for query in queries:
-            st.text(query)
             con.execute(query)
 
 
@@ -128,11 +127,11 @@ def initialize_new_game_in_db() -> int:
     with get_cursor() as con:
         [game_id] = con.execute(
             f"""
-                INSERT INTO {Tables.games} ({Var.game_stage}) VALUES ({GameStage.game_open}) RETURNING *;
+                INSERT INTO {Tables.games} ({Var.game_stage}) VALUES ({GameStage.game_open}) RETURNING {Var.game_id};
                 """
         ).fetchall()
 
-    return game_id
+    return game_id[0]  # otherwise returns tuple
 
 
 def set_new_game() -> None:
@@ -151,16 +150,18 @@ def set_game_state(game_id: int, game_stage: GameStage) -> None:
 
 
 def get_game_stage_from_db(game_id: int) -> GameStage:
-    query = f"SELECT {Var.game_stage} FROM {Tables.games} WHERE {Var.game_id} = ?"
+    query = (
+        f"SELECT {Var.game_stage} FROM {Tables.games} WHERE {Var.game_id} = {game_id}"
+    )
 
     with get_cursor() as con:
-        results = con.execute(query, (game_id,)).fetchall()
+        results = con.execute(query).fetchall()
 
     if len(results) != 1:
         raise ValueError(
             f"Did not find exactly one entry for game id {game_id}: {results}"
         )
-    return results[0]
+    return results[0][0]  # don't return tuple
 
 
 def determine_game_stage(game_id: int | None) -> GameStage:
@@ -179,7 +180,6 @@ def register_player_id(player_id: str) -> None:
             INSERT INTO {Tables.players} ({Var.player_id}, {Var.player_name}) VALUES ('{player_id}', '{player_id}');
             """
     with get_cursor() as con:
-        st.text(query)
         con.execute(query)
         st.session_state[Var.player_id] = player_id
 
@@ -201,6 +201,7 @@ def main():
 
     player_id = determine_player_id()
     game_id = determine_game_id()
+    st.text(game_id)
 
     game_stage = determine_game_stage(game_id)
 
@@ -215,14 +216,25 @@ def main():
             guessing_screen(player_id=player_id, game_id=game_id)
         case GameStage.finished:
             finished_screen(player_id=player_id, game_id=game_id)
-        case _:
-            raise ValueError(f"Found {_}")
+        case unreachable:
+            raise ValueError(f"Found {unreachable}")
 
 
 def find_game_screen(player_id: str) -> None:
     st.title("Welcome to 'Who knew it?' without Matt Stewart")
     st.text(f"Hello {player_id}")
-    st.button("Start Game", on_click=set_new_game)
+    st.button("Find Game", on_click=set_new_game)
+
+
+def open_game_screen(player_id: str, game_id: int) -> None:
+    st.title(f"This is your game. {game_id}")
+    st.text(f"Hello {player_id}")
+    st.button(
+        "Start Game",
+        on_click=lambda: set_game_state(
+            game_id=game_id, game_stage=GameStage.answer_writing
+        ),
+    )
 
 
 def answer_writing_screen(player_id: str, game_id: int) -> None:
