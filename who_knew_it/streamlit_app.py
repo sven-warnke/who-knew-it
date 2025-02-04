@@ -22,6 +22,7 @@ class Tables(enum.StrEnum):
 
 class Var(enum.StrEnum):
     player_id = "player_id"
+    player_name = "player_name"
     game_id = "game_id"
     retrieved = "retrieved"
     answer_list = "answer_list"
@@ -48,36 +49,37 @@ def get_cursor() -> duckdb.DuckDBPyConnection:
 
 
 def create_tables_if_not_exist():
-    with get_cursor() as con:
-        con.sql("""
+    queries = [
+        """
                 CREATE SEQUENCE IF NOT EXISTS seq_game_id START 1;
-                """)
-        con.sql(f"""
+                """,
+        f"""
                 CREATE TABLE IF NOT EXISTS {Tables.games} (
                     {Var.game_id} INT PRIMARY KEY DEFAULT NEXTVAL('seq_game_id'),
                     {Var.game_stage} INT NOT NULL,
                 );
-                """)
+                """,
+        f"""
+                CREATE TABLE IF NOT EXISTS {Tables.players} (
+                    {Var.player_id} VARCHAR(255) PRIMARY KEY,
+                    {Var.player_name} VARCHAR(255) NOT NULL
+                );
+                """,
+        f"""
+                CREATE TABLE IF NOT EXISTS {Tables.game_player} (
+                    {Var.game_id} INT,
+                    {Var.player_id} VARCHAR(255),
+                    PRIMARY KEY ({Var.game_id}, player_id),
+                    FOREIGN KEY ({Var.game_id}) REFERENCES {Tables.games}({Var.game_id}),
+                    FOREIGN KEY ({Var.player_id}) REFERENCES {Tables.players}({Var.player_id})
+                );
+                """,
+    ]
 
-        con.sql(
-            f"""
-            CREATE TABLE IF NOT EXISTS {Tables.players} (
-                {Var.player_id} VARCHAR(255) PRIMARY KEY,
-                player_name VARCHAR(255) NOT NULL
-            );
-            """
-        )
-        con.sql(
-            f"""
-            CREATE TABLE {Tables.game_player} (
-                {Var.game_id} INT,
-                {Var.player_id} VARCHAR(255),
-                PRIMARY KEY ({Var.game_id}, player_id),
-                FOREIGN KEY ({Var.game_id}) REFERENCES {Tables.games}({Var.game_id}),
-                FOREIGN KEY ({Var.player_id}) REFERENCES {Tables.players}({Var.player_id})
-            );
-            """
-        )
+    with get_cursor() as con:
+        for query in queries:
+            st.text(query)
+            con.execute(query)
 
 
 def get_alphabet_letter(n: int) -> str:
@@ -173,12 +175,12 @@ def generate_player_id() -> str:
 
 
 def register_player_id(player_id: str) -> None:
-    with get_cursor() as con:
-        con.sql(
-            f"""
-            INSERT INTO {Tables.players} (id, name) VALUES ({player_id}, {player_id});
+    query = f"""
+            INSERT INTO {Tables.players} ({Var.player_id}, {Var.player_name}) VALUES ('{player_id}', '{player_id}');
             """
-        )
+    with get_cursor() as con:
+        st.text(query)
+        con.execute(query)
         st.session_state[Var.player_id] = player_id
 
 
@@ -204,7 +206,7 @@ def main():
 
     match game_stage:
         case GameStage.no_game_selected:
-            find_game_screen(player_id=player_id, game_id=game_id)
+            find_game_screen(player_id=player_id)
         case GameStage.game_open:
             open_game_screen(player_id=player_id, game_id=game_id)
         case GameStage.answer_writing:
@@ -217,8 +219,9 @@ def main():
             raise ValueError(f"Found {_}")
 
 
-def find_game_screen() -> None:
+def find_game_screen(player_id: str) -> None:
     st.title("Welcome to 'Who knew it?' without Matt Stewart")
+    st.text(f"Hello {player_id}")
     st.button("Start Game", on_click=set_new_game)
 
 
