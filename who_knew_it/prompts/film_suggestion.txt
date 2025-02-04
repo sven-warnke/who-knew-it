@@ -1,0 +1,3 @@
+Please select a random mostly unknown film from imdb. The film must actually exist. Ideally it has a strange or unusual plot. Please state only the name and nothing else.
+Don't reuse any of the following:
+*The Strange Case of Dr. Jekyll and Mr. Hyde... and Mr. Seek*
