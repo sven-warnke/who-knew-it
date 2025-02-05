@@ -1,3 +1,4 @@
+from typing import Any
 import streamlit as st
 import enum
 from who_knew_it import fake_answer
@@ -7,6 +8,7 @@ from who_knew_it import movie_suggestion
 import duckdb
 import uuid
 from pathlib import Path
+from functools import partial
 
 DEFAULT_N_FAKE_ANSWERS = 2
 MAX_N_FAKE_ANSWERS = 4
@@ -134,6 +136,18 @@ def initialize_new_game_in_db() -> int:
     return game_id[0]  # otherwise returns tuple
 
 
+def get_all_opened_games() -> list[int]:
+    query = f"""
+    SELECT {Var.game_id} FROM {Tables.games}
+    WHERE {Var.game_stage} = {GameStage.game_open};
+    """
+
+    with get_cursor() as con:
+        result = con.execute(query).fetchall()
+
+    return [res[0] for res in result]
+
+
 def set_new_game() -> None:
     game_id = initialize_new_game_in_db()
     st.session_state[Var.game_id] = game_id
@@ -143,7 +157,7 @@ def set_game_state(game_id: int, game_stage: GameStage) -> None:
     query = f"""
     UPDATE {Tables.games}
     SET {Var.game_stage} = {game_stage}
-    WHERE {Var.game_id} = {game_id}
+    WHERE {Var.game_id} = {game_id};
     """
     with get_cursor() as con:
         con.execute(query)
@@ -196,6 +210,16 @@ def determine_game_id() -> int | None:
     return st.session_state.get(Var.game_id, None)
 
 
+def join_game(player_id: str, game_id: int) -> None:
+    print(f"{player_id} tries to join game {game_id}.")
+    # TODO: add player limit and checking whether limit reached
+    query = f"""
+    INSERT INTO {Tables.game_player} ({Var.player_id}, {Var.game_id}) VALUES ('{player_id}', {game_id});
+    """
+    with get_cursor() as con:
+        con.execute(query)
+
+
 def main():
     create_tables_if_not_exist()
 
@@ -220,9 +244,21 @@ def main():
 
 
 def find_game_screen(player_id: str) -> None:
-    st.title("Welcome to 'Who knew it?' without Matt Stewart")
+    st.title("Welcome to 'Who knew it?' with Chat Stewart")
     st.text(f"Hello {player_id}")
-    st.button("Find Game", on_click=set_new_game)
+
+    open_game_ids = get_all_opened_games()
+
+    if not open_game_ids:
+        st.text("There are no open games. But you can create a new one!")
+    else:
+        for open_game in open_game_ids:
+            st.button(
+                f"{open_game}",
+                on_click=partial(join_game, player_id=player_id, game_id=open_game),
+            )
+
+    st.button("Create new game", on_click=set_new_game)
 
 
 def open_game_screen(player_id: str, game_id: int) -> None:
@@ -245,6 +281,8 @@ def answer_writing_screen(player_id: str, game_id: int) -> None:
 
 
 def guessing_screen(player_id: str, game_id: int) -> None:
+    st.title("Here are your options. Which one do you think is correct?")
+
     n_fake_answers = st.number_input(
         "Number of wrong answers",
         min_value=0,
@@ -310,6 +348,10 @@ def guessing_screen(player_id: str, game_id: int) -> None:
 
     st.metric(label="Points", value=st.session_state[Var.points])
     st.button("Next", on_click=reset_question_state)
+
+
+def finished_screen(player_id: str, game_id: int) -> None:
+    st.title("Finished!")
 
 
 if __name__ == "__main__":

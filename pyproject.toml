@@ -23,4 +23,4 @@ build-backend = "poetry.core.masonry.api"
 
 
 [tool.ruff]
-select = ["E", "W", "F", "I", "B"]
+lint.select = ["E", "W", "F", "I", "B"]
