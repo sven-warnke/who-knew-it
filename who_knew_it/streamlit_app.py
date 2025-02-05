@@ -51,8 +51,14 @@ def get_cursor() -> duckdb.DuckDBPyConnection:
     return get_db_connection().cursor()
 
 
-def create_tables_if_not_exist():
+def create_tables_if_not_exist() -> None:
+    if DB_FILE.exists():
+        return
+
     queries = [
+        """
+                BEGIN TRANSACTION;
+        """,
         """
                 CREATE SEQUENCE IF NOT EXISTS seq_game_id START 1;
                 """,
@@ -77,11 +83,17 @@ def create_tables_if_not_exist():
                     FOREIGN KEY ({Var.player_id}) REFERENCES {Tables.players}({Var.player_id})
                 );
                 """,
+        f"""
+        COMMIT;
+        """,
     ]
 
     with get_cursor() as con:
         for query in queries:
-            con.execute(query)
+            try:
+                con.execute(query)
+            except duckdb.TransactionException as e:
+                print(f"{e}")
 
 
 def get_alphabet_letter(n: int) -> str:
@@ -160,9 +172,9 @@ def get_all_players_in_game(game_id: int) -> list[str]:
     return [res[0] for res in result]
 
 
-def set_new_game() -> None:
+def create_and_join_new_game(player_id: str) -> None:
     game_id = initialize_new_game_in_db()
-    st.session_state[Var.game_id] = game_id
+    join_game(player_id=player_id, game_id=game_id)
 
 
 def set_game_state(game_id: int, game_stage: GameStage) -> None:
@@ -228,26 +240,24 @@ def _n_players_in_game_query(game_id: int) -> str:
     """
 
 
-def get_n_players_in_game(game_id: int) -> int:
-    query = _n_players_in_game_query(game_id=game_id)
-    with get_cursor() as con:
-        results = con.execute(query=query).fetchall()
-    if len(results) != 1:
-        raise ValueError(f"Expected length 1, got {results}")
-    return results[0][0]
-
-
 def join_game(player_id: str, game_id: int) -> None:
     print(f"{player_id} tries to join game {game_id}.")
-    subquery = _n_players_in_game_query(game_id=game_id)
-    query = f"""
-    INSERT INTO {Tables.game_player} ({Var.player_id}, {Var.game_id}) VALUES ('{player_id}', {game_id})
-    WHERE ({subquery}) < {N_MAX_PLAYERS};
-    SELECT changes();
-    """
-    with get_cursor() as con:
-        n_changes = con.execute(query)
-    if n_changes:
+
+    joined_succesfully = player_id in get_all_players_in_game(game_id=game_id)
+
+    if not joined_succesfully:
+        subquery = _n_players_in_game_query(game_id=game_id)
+        query = f"""
+        INSERT INTO {Tables.game_player} ({Var.player_id}, {Var.game_id}) 
+        SELECT '{player_id}', {game_id}
+        WHERE ({subquery}) < {N_MAX_PLAYERS};
+        """
+        st.text(query)
+        with get_cursor() as con:
+            con.execute(query)
+        joined_succesfully = player_id in get_all_players_in_game(game_id=game_id)
+
+    if joined_succesfully:
         st.session_state[Var.game_id] = game_id
         print(f"{player_id} joined game {game_id}.")
 
@@ -259,7 +269,7 @@ def rerun_if_players_changed(game_id: int, current_players: list[str]) -> None:
         st.rerun()
 
 
-@st.fragment(run_every=2)
+@st.fragment(run_every=30)
 def auto_refresh():
     st.rerun()
 
@@ -294,7 +304,10 @@ def find_game_screen(player_id: str) -> None:
     open_game_ids = get_all_opened_games()
 
     st.header("Select a game!")
-    st.button("Create new game", on_click=set_new_game)
+    st.button(
+        "Create new game",
+        on_click=partial(create_and_join_new_game, player_id=player_id),
+    )
 
     if not open_game_ids:
         st.text("There are no open games. But you can create a new one!")
@@ -315,6 +328,7 @@ def find_game_screen(player_id: str) -> None:
                 color = "green" if len(all_players_in_game) < N_MAX_PLAYERS else "red"
                 st.markdown(f":{color}[{len(all_players_in_game)}/{N_MAX_PLAYERS}]")
 
+    st.button("Refresh")
     auto_refresh()
 
 
