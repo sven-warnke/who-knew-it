@@ -259,6 +259,11 @@ def rerun_if_players_changed(game_id: int, current_players: list[str]) -> None:
         st.rerun()
 
 
+@st.fragment(run_every=2)
+def auto_refresh():
+    st.rerun()
+
+
 def main():
     create_tables_if_not_exist()
 
@@ -289,19 +294,28 @@ def find_game_screen(player_id: str) -> None:
     open_game_ids = get_all_opened_games()
 
     st.header("Select a game!")
-    open_game_col, new_game_col = st.columns([0.8, 0.2])
+    st.button("Create new game", on_click=set_new_game)
 
-    with open_game_col:
-        if not open_game_ids:
-            st.text("There are no open games. But you can create a new one!")
-        else:
-            for open_game in open_game_ids:
+    if not open_game_ids:
+        st.text("There are no open games. But you can create a new one!")
+    else:
+        for open_game in open_game_ids:
+            col_game_name, col_players, col_how_many_free = st.columns([0.2, 0.7, 0.1])
+            all_players_in_game = get_all_players_in_game(game_id=open_game)
+            with col_game_name:
                 st.button(
                     f"{open_game}",
                     on_click=partial(join_game, player_id=player_id, game_id=open_game),
+                    disabled=len(all_players_in_game) >= N_MAX_PLAYERS,
                 )
-    with new_game_col:
-        st.button("Create new game", on_click=set_new_game)
+            with col_players:
+                for player in all_players_in_game:
+                    st.text(player)
+            with col_how_many_free:
+                color = "green" if len(all_players_in_game) < N_MAX_PLAYERS else "red"
+                st.markdown(f":{color}[{len(all_players_in_game)}/{N_MAX_PLAYERS}]")
+
+    auto_refresh()
 
 
 def open_game_screen(player_id: str, game_id: int) -> None:
