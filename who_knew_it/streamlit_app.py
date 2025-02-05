@@ -12,6 +12,7 @@ from functools import partial
 
 DEFAULT_N_FAKE_ANSWERS = 2
 MAX_N_FAKE_ANSWERS = 4
+N_MAX_PLAYERS = 5
 
 DB_FILE = Path(__file__).parent.parent / "database" / "file.db"
 
@@ -148,6 +149,17 @@ def get_all_opened_games() -> list[int]:
     return [res[0] for res in result]
 
 
+def get_all_players_in_game(game_id: int) -> list[str]:
+    query = f"""
+    SELECT {Var.player_id} FROM {Tables.game_player}
+    WHERE {Var.game_id} = {game_id};
+    """
+    with get_cursor() as con:
+        result = con.execute(query).fetchall()
+
+    return [res[0] for res in result]
+
+
 def set_new_game() -> None:
     game_id = initialize_new_game_in_db()
     st.session_state[Var.game_id] = game_id
@@ -210,14 +222,41 @@ def determine_game_id() -> int | None:
     return st.session_state.get(Var.game_id, None)
 
 
+def _n_players_in_game_query(game_id: int) -> str:
+    return f"""
+    SELECT COUNT(*) FROM {Tables.game_player} WHERE {Var.game_id} = {game_id}
+    """
+
+
+def get_n_players_in_game(game_id: int) -> int:
+    query = _n_players_in_game_query(game_id=game_id)
+    with get_cursor() as con:
+        results = con.execute(query=query).fetchall()
+    if len(results) != 1:
+        raise ValueError(f"Expected length 1, got {results}")
+    return results[0][0]
+
+
 def join_game(player_id: str, game_id: int) -> None:
     print(f"{player_id} tries to join game {game_id}.")
-    # TODO: add player limit and checking whether limit reached
+    subquery = _n_players_in_game_query(game_id=game_id)
     query = f"""
-    INSERT INTO {Tables.game_player} ({Var.player_id}, {Var.game_id}) VALUES ('{player_id}', {game_id});
+    INSERT INTO {Tables.game_player} ({Var.player_id}, {Var.game_id}) VALUES ('{player_id}', {game_id})
+    WHERE ({subquery}) < {N_MAX_PLAYERS};
+    SELECT changes();
     """
     with get_cursor() as con:
-        con.execute(query)
+        n_changes = con.execute(query)
+    if n_changes:
+        st.session_state[Var.game_id] = game_id
+        print(f"{player_id} joined game {game_id}.")
+
+
+@st.fragment(run_every=1)
+def rerun_if_players_changed(game_id: int, current_players: list[str]) -> None:
+    actual_players = get_all_players_in_game(game_id)
+    if set(actual_players) != set(current_players):
+        st.rerun()
 
 
 def main():
@@ -249,27 +288,42 @@ def find_game_screen(player_id: str) -> None:
 
     open_game_ids = get_all_opened_games()
 
-    if not open_game_ids:
-        st.text("There are no open games. But you can create a new one!")
-    else:
-        for open_game in open_game_ids:
-            st.button(
-                f"{open_game}",
-                on_click=partial(join_game, player_id=player_id, game_id=open_game),
-            )
+    st.header("Select a game!")
+    open_game_col, new_game_col = st.columns([0.8, 0.2])
 
-    st.button("Create new game", on_click=set_new_game)
+    with open_game_col:
+        if not open_game_ids:
+            st.text("There are no open games. But you can create a new one!")
+        else:
+            for open_game in open_game_ids:
+                st.button(
+                    f"{open_game}",
+                    on_click=partial(join_game, player_id=player_id, game_id=open_game),
+                )
+    with new_game_col:
+        st.button("Create new game", on_click=set_new_game)
 
 
 def open_game_screen(player_id: str, game_id: int) -> None:
     st.title(f"This is your game. {game_id}")
     st.text(f"Hello {player_id}")
+    st.header("Players:")
+    all_players = get_all_players_in_game(game_id=game_id)
+    if not player_id in all_players:
+        st.error(
+            "Seems like you are not in the game. How do you see it then? This should not have happened."
+        )
+
+    for player in all_players:
+        st.text(player)
+
     st.button(
         "Start Game",
         on_click=lambda: set_game_state(
             game_id=game_id, game_stage=GameStage.answer_writing
         ),
     )
+    rerun_if_players_changed(game_id=game_id, current_players=all_players)
 
 
 def answer_writing_screen(player_id: str, game_id: int) -> None:
