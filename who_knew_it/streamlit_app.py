@@ -201,7 +201,6 @@ def main():
 
     player_id = determine_player_id()
     game_id = determine_game_id()
-    st.text(game_id)
 
     game_stage = determine_game_stage(game_id)
 
@@ -238,7 +237,7 @@ def open_game_screen(player_id: str, game_id: int) -> None:
 
 
 def answer_writing_screen(player_id: str, game_id: int) -> None:
-    st.text("Not implemented")
+    st.title("Write your answers!")
     st.button(
         "Next",
         on_click=lambda: set_game_state(game_id=game_id, game_stage=GameStage.guessing),
