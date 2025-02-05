@@ -6,12 +6,12 @@ import random
 from who_knew_it import movie_suggestion
 import duckdb
 import uuid
-
+from pathlib import Path
 
 DEFAULT_N_FAKE_ANSWERS = 2
 MAX_N_FAKE_ANSWERS = 4
 
-DB_FILE = "file.db"
+DB_FILE = Path(__file__).parent.parent / "database" / "file.db"
 
 
 class Tables(enum.StrEnum):
