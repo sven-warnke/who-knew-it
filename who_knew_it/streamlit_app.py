@@ -21,6 +21,7 @@ class Tables(enum.StrEnum):
     players = "players"
     games = "games"
     game_player = "game_player"
+    game_player_question = "game_player_question"
 
 
 class Var(enum.StrEnum):
@@ -32,6 +33,7 @@ class Var(enum.StrEnum):
     points = "points"
     is_answered = "is_answered"
     game_stage = "game_stage"
+    is_host = "is_host"
 
 
 class GameStage(enum.IntEnum):
@@ -78,11 +80,22 @@ def create_tables_if_not_exist() -> None:
                 CREATE TABLE IF NOT EXISTS {Tables.game_player} (
                     {Var.game_id} INT,
                     {Var.player_id} VARCHAR(255),
+                    {Var.is_host} BOOLEAN,
                     PRIMARY KEY ({Var.game_id}, player_id),
                     FOREIGN KEY ({Var.game_id}) REFERENCES {Tables.games}({Var.game_id}),
                     FOREIGN KEY ({Var.player_id}) REFERENCES {Tables.players}({Var.player_id})
                 );
                 """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {Tables.game_player} (
+            {Var.game_id} INT,
+            {Var.player_id} VARCHAR(255),
+            {Var.is_host} BOOLEAN,
+            PRIMARY KEY ({Var.game_id}, player_id),
+            FOREIGN KEY ({Var.game_id}) REFERENCES {Tables.games}({Var.game_id}),
+            FOREIGN KEY ({Var.player_id}) REFERENCES {Tables.players}({Var.player_id})
+        );
+        """,
         f"""
         COMMIT;
         """,
@@ -174,7 +187,7 @@ def get_all_players_in_game(game_id: int) -> list[str]:
 
 def create_and_join_new_game(player_id: str) -> None:
     game_id = initialize_new_game_in_db()
-    join_game(player_id=player_id, game_id=game_id)
+    join_game(player_id=player_id, game_id=game_id, is_host=True)
 
 
 def set_game_state(game_id: int, game_stage: GameStage) -> None:
@@ -240,7 +253,7 @@ def _n_players_in_game_query(game_id: int) -> str:
     """
 
 
-def join_game(player_id: str, game_id: int) -> None:
+def join_game(player_id: str, game_id: int, is_host: bool) -> None:
     print(f"{player_id} tries to join game {game_id}.")
 
     joined_succesfully = player_id in get_all_players_in_game(game_id=game_id)
@@ -248,8 +261,8 @@ def join_game(player_id: str, game_id: int) -> None:
     if not joined_succesfully:
         subquery = _n_players_in_game_query(game_id=game_id)
         query = f"""
-        INSERT INTO {Tables.game_player} ({Var.player_id}, {Var.game_id}) 
-        SELECT '{player_id}', {game_id}
+        INSERT INTO {Tables.game_player} ({Var.player_id}, {Var.game_id}, {Var.is_host}) 
+        SELECT '{player_id}', {game_id}, {is_host}
         WHERE ({subquery}) < {N_MAX_PLAYERS};
         """
         st.text(query)
@@ -260,6 +273,22 @@ def join_game(player_id: str, game_id: int) -> None:
     if joined_succesfully:
         st.session_state[Var.game_id] = game_id
         print(f"{player_id} joined game {game_id}.")
+
+
+def is_player_host(player_id: str, game_id: int) -> bool:
+    query = f"""
+    SELECT {Var.is_host} FROM {Tables.game_player} 
+    WHERE {Var.player_id} = {player_id} AND {Var.game_id} = {game_id}; 
+    """
+    with get_cursor() as con:
+        con.execute(query)
+        result = con.fetchall()
+
+    if len(result) > 1:
+        raise ValueError(f"Found multiple entries, expected at most 1: {result}.")
+    if not result:
+        return False
+    return bool(result[0][0])
 
 
 @st.fragment(run_every=1)
@@ -282,19 +311,25 @@ def main():
 
     game_stage = determine_game_stage(game_id)
 
-    match game_stage:
-        case GameStage.no_game_selected:
-            find_game_screen(player_id=player_id)
-        case GameStage.game_open:
-            open_game_screen(player_id=player_id, game_id=game_id)
-        case GameStage.answer_writing:
-            answer_writing_screen(player_id=player_id, game_id=game_id)
-        case GameStage.guessing:
-            guessing_screen(player_id=player_id, game_id=game_id)
-        case GameStage.finished:
-            finished_screen(player_id=player_id, game_id=game_id)
-        case unreachable:
-            raise ValueError(f"Found {unreachable}")
+    if game_stage == GameStage.no_game_selected:
+        find_game_screen(player_id=player_id)
+
+    else:
+        is_host = is_player_host(player_id=player_id, game_id=game_id)
+
+        match game_stage:
+            case GameStage.game_open:
+                open_game_screen(player_id=player_id, game_id=game_id, is_host=is_host)
+            case GameStage.answer_writing:
+                answer_writing_screen(
+                    player_id=player_id, game_id=game_id, is_host=is_host
+                )
+            case GameStage.guessing:
+                guessing_screen(player_id=player_id, game_id=game_id, is_host=is_host)
+            case GameStage.finished:
+                finished_screen(player_id=player_id, game_id=game_id, is_host=is_host)
+            case unreachable:
+                raise ValueError(f"Found {unreachable}")
 
 
 def find_game_screen(player_id: str) -> None:
@@ -318,7 +353,9 @@ def find_game_screen(player_id: str) -> None:
             with col_game_name:
                 st.button(
                     f"{open_game}",
-                    on_click=partial(join_game, player_id=player_id, game_id=open_game),
+                    on_click=partial(
+                        join_game, player_id=player_id, game_id=open_game, is_host=False
+                    ),
                     disabled=len(all_players_in_game) >= N_MAX_PLAYERS,
                 )
             with col_players:
@@ -332,7 +369,7 @@ def find_game_screen(player_id: str) -> None:
     auto_refresh()
 
 
-def open_game_screen(player_id: str, game_id: int) -> None:
+def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
     st.title(f"This is your game. {game_id}")
     st.text(f"Hello {player_id}")
     st.header("Players:")
@@ -350,11 +387,12 @@ def open_game_screen(player_id: str, game_id: int) -> None:
         on_click=lambda: set_game_state(
             game_id=game_id, game_stage=GameStage.answer_writing
         ),
+        disabled=not is_host,
     )
     rerun_if_players_changed(game_id=game_id, current_players=all_players)
 
 
-def answer_writing_screen(player_id: str, game_id: int) -> None:
+def answer_writing_screen(player_id: str, game_id: int, is_host: bool) -> None:
     st.title("Write your answers!")
     st.button(
         "Next",
@@ -362,7 +400,7 @@ def answer_writing_screen(player_id: str, game_id: int) -> None:
     )
 
 
-def guessing_screen(player_id: str, game_id: int) -> None:
+def guessing_screen(player_id: str, game_id: int, is_host: bool) -> None:
     st.title("Here are your options. Which one do you think is correct?")
 
     n_fake_answers = st.number_input(
@@ -432,7 +470,7 @@ def guessing_screen(player_id: str, game_id: int) -> None:
     st.button("Next", on_click=reset_question_state)
 
 
-def finished_screen(player_id: str, game_id: int) -> None:
+def finished_screen(player_id: str, game_id: int, is_host: bool) -> None:
     st.title("Finished!")
 
 
