@@ -1,4 +1,4 @@
-from typing import Any
+import time
 import streamlit as st
 import enum
 from who_knew_it import fake_answer
@@ -94,9 +94,9 @@ def create_tables_if_not_exist() -> None:
         f"""
         CREATE TABLE IF NOT EXISTS {Tables.questions} (
             {Var.game_id} INT,
-            {Var.question_number} BOOLEAN,
-            {Var.question} str,
-            {Var.correct_answer} str,
+            {Var.question_number} INT NOT NULL,
+            {Var.question} VARCHAR,
+            {Var.correct_answer} VARCHAR,
             PRIMARY KEY ({Var.game_id}, {Var.question_number}),
             FOREIGN KEY ({Var.game_id}) REFERENCES {Tables.games}({Var.game_id}),
         );
@@ -296,6 +296,75 @@ def is_player_host(player_id: str, game_id: int) -> bool:
     return bool(result[0][0])
 
 
+def initialize_questions(game_id: int, n_questions: int) -> None:
+    if n_questions < 1:
+        raise ValueError(
+            f"Number of questions must be at least 1, received {n_questions}."
+        )
+
+    item_rows = "\n".join([f"({game_id}, {i})" for i in range(1, n_questions + 1)])
+    query = f"""
+    INSERT INTO {Tables.questions} ({Var.game_id}, {Var.question_number}) VALUES
+    {item_rows}
+    ON CONFLICT ({Var.game_id}, {Var.question_number}) DO NOTHING;
+    """
+    with get_cursor() as con:
+        con.execute(query)
+
+
+def start_game(game_id: int, n_questions: int) -> None:
+    initialize_questions(game_id=game_id, n_questions=n_questions)
+
+    set_game_state(game_id=game_id, game_stage=GameStage.answer_writing)
+
+
+def determine_first_undefined_question_number(game_id: int) -> int | None:
+    query = f"""
+    SELECT MIN({Var.question_number}) FROM {Tables.questions}
+    WHERE {Var.game_id} = {game_id} AND {Var.question} IS NULL;
+    """
+    with get_cursor() as con:
+        result = con.execute(query).fetchall()
+
+    if len(result) != 1:
+        raise ValueError(f"Expected result of length 1, found {result}")
+    return result[0][0]
+
+
+def get_question(game_id: int, question_number: int) -> str | None:
+    query = f"""
+    SELECT ({Var.question}) FROM {Tables.questions}
+    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number};
+    """
+    with get_cursor() as con:
+        result = con.execute(query).fetchall()
+
+    if len(result) != 1:
+        raise ValueError(f"Expected result of length 1, found {result}")
+    return result[0][0]
+
+
+def add_question_and_correct_answer(
+    game_id: int, question_number: int, question: str, correct_answer: str
+) -> None:
+    query = f""""
+    UPDATE {Tables.questions}
+    SET {Var.question} = '{question}'
+    {Var.correct_answer} = '{correct_answer}'
+    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number};
+    """
+    with get_cursor() as con:
+        con.execute(query)
+
+
+def set_player_answer(
+    game_id: int,
+    player_id: str,
+    question_number=int,
+) -> None:
+    pass
+
+
 @st.fragment(run_every=1)
 def rerun_if_game_state_changed(
     game_id: int, current_players: list[str], current_stage: GameStage
@@ -396,16 +465,19 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
 
     st.button(
         "Start Game",
-        on_click=lambda: set_game_state(
-            game_id=game_id, game_stage=GameStage.answer_writing
-        ),
+        on_click=partial(start_game, game_id=game_id, n_questions=6),
         disabled=not is_host,
     )
-    rerun_if_game_state_changed(game_id=game_id, current_players=all_players)
+    rerun_if_game_state_changed(
+        game_id=game_id, current_players=all_players, current_stage=GameStage.game_open
+    )
 
 
 def answer_writing_screen(player_id: str, game_id: int, is_host: bool) -> None:
-    question_number = determine_question_number(game_id=game_id)
+    question_number = determine_first_undefined_question_number(game_id=game_id)
+    if not question_number:
+        set_game_state(game_id=game_id, game_stage=GameStage.finished)
+        st.rerun()
 
     question = get_question(game_id=game_id, question_number=question_number)
 
@@ -424,7 +496,7 @@ def answer_writing_screen(player_id: str, game_id: int, is_host: bool) -> None:
                 question = retrieved_title
             else:
                 while question is None:
-                    st.sleep(1)
+                    time.sleep(1)
                     question = get_question(
                         game_id=game_id, question_number=question_number
                     )
