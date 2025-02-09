@@ -102,6 +102,17 @@ def create_tables_if_not_exist() -> None:
         );
         """,
         f"""
+        CREATE TABLE IF NOT EXISTS {Tables.answers} (
+            {Var.game_id} INT,
+            {Var.question_number} INT,
+            {Var.player_id} VARCHAR(255),
+            {Var.player_answer} VARCHAR,
+            PRIMARY KEY ({Var.game_id}, {Var.question_number}, {Var.player_id}),
+            FOREIGN KEY ({Var.game_id}) REFERENCES {Tables.games}({Var.game_id}),
+            FOREIGN KEY ({Var.player_id}) REFERENCES {Tables.players}({Var.player_id}),
+        );
+        """,
+        f"""
         COMMIT;
         """,
     ]
@@ -283,7 +294,7 @@ def join_game(player_id: str, game_id: int, is_host: bool) -> None:
 def is_player_host(player_id: str, game_id: int) -> bool:
     query = f"""
     SELECT {Var.is_host} FROM {Tables.game_player} 
-    WHERE {Var.player_id} = {player_id} AND {Var.game_id} = {game_id}; 
+    WHERE {Var.player_id} = '{player_id}' AND {Var.game_id} = {game_id}; 
     """
     with get_cursor() as con:
         con.execute(query)
@@ -302,12 +313,13 @@ def initialize_questions(game_id: int, n_questions: int) -> None:
             f"Number of questions must be at least 1, received {n_questions}."
         )
 
-    item_rows = "\n".join([f"({game_id}, {i})" for i in range(1, n_questions + 1)])
+    item_rows = ",\n".join([f"({game_id}, {i})" for i in range(1, n_questions + 1)])
     query = f"""
     INSERT INTO {Tables.questions} ({Var.game_id}, {Var.question_number}) VALUES
     {item_rows}
     ON CONFLICT ({Var.game_id}, {Var.question_number}) DO NOTHING;
     """
+    print("initialize_questions: ", query)
     with get_cursor() as con:
         con.execute(query)
 
@@ -347,14 +359,24 @@ def get_question(game_id: int, question_number: int) -> str | None:
 def add_question_and_correct_answer(
     game_id: int, question_number: int, question: str, correct_answer: str
 ) -> None:
-    query = f""""
+    query = f"""
     UPDATE {Tables.questions}
-    SET {Var.question} = '{question}'
-    {Var.correct_answer} = '{correct_answer}'
-    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number};
+    SET {Var.question} = ${Var.question},
+    {Var.correct_answer} = ${Var.correct_answer}
+    WHERE {Var.game_id} = ${Var.game_id} AND {Var.question_number} = ${Var.question_number};
     """
+
+    variables = {
+        str(Var.question): question,
+        str(Var.correct_answer): correct_answer,
+        str(Var.game_id): game_id,
+        str(Var.question_number): question_number,
+    }
+    print("Query: ", query)
+    print("Variables: ", variables)
+
     with get_cursor() as con:
-        con.execute(query)
+        con.execute(query, variables)
 
 
 def set_player_answer(
