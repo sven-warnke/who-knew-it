@@ -21,7 +21,8 @@ class Tables(enum.StrEnum):
     players = "players"
     games = "games"
     game_player = "game_player"
-    game_player_question = "game_player_question"
+    questions = "questions"
+    answers = "answers"
 
 
 class Var(enum.StrEnum):
@@ -34,6 +35,10 @@ class Var(enum.StrEnum):
     is_answered = "is_answered"
     game_stage = "game_stage"
     is_host = "is_host"
+    question_number = "question_number"
+    question = "question"
+    correct_answer = "correct_answer"
+    player_answer = "player_answer"
 
 
 class GameStage(enum.IntEnum):
@@ -81,19 +86,19 @@ def create_tables_if_not_exist() -> None:
                     {Var.game_id} INT,
                     {Var.player_id} VARCHAR(255),
                     {Var.is_host} BOOLEAN,
-                    PRIMARY KEY ({Var.game_id}, player_id),
+                    PRIMARY KEY ({Var.game_id}, {Var.player_id}),
                     FOREIGN KEY ({Var.game_id}) REFERENCES {Tables.games}({Var.game_id}),
                     FOREIGN KEY ({Var.player_id}) REFERENCES {Tables.players}({Var.player_id})
                 );
                 """,
         f"""
-        CREATE TABLE IF NOT EXISTS {Tables.game_player} (
+        CREATE TABLE IF NOT EXISTS {Tables.questions} (
             {Var.game_id} INT,
-            {Var.player_id} VARCHAR(255),
-            {Var.is_host} BOOLEAN,
-            PRIMARY KEY ({Var.game_id}, player_id),
+            {Var.question_number} BOOLEAN,
+            {Var.question} str,
+            {Var.correct_answer} str,
+            PRIMARY KEY ({Var.game_id}, {Var.question_number}),
             FOREIGN KEY ({Var.game_id}) REFERENCES {Tables.games}({Var.game_id}),
-            FOREIGN KEY ({Var.player_id}) REFERENCES {Tables.players}({Var.player_id})
         );
         """,
         f"""
@@ -292,7 +297,13 @@ def is_player_host(player_id: str, game_id: int) -> bool:
 
 
 @st.fragment(run_every=1)
-def rerun_if_players_changed(game_id: int, current_players: list[str]) -> None:
+def rerun_if_game_state_changed(
+    game_id: int, current_players: list[str], current_stage: GameStage
+) -> None:
+    actual_stage = determine_game_stage(game_id)
+    if actual_stage != current_stage:
+        st.rerun()
+
     actual_players = get_all_players_in_game(game_id)
     if set(actual_players) != set(current_players):
         st.rerun()
@@ -371,6 +382,7 @@ def find_game_screen(player_id: str) -> None:
 
 def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
     st.title(f"This is your game. {game_id}")
+    st.text(f"You are {'not ' if not is_host else ''} the host.")
     st.text(f"Hello {player_id}")
     st.header("Players:")
     all_players = get_all_players_in_game(game_id=game_id)
@@ -389,11 +401,46 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
         ),
         disabled=not is_host,
     )
-    rerun_if_players_changed(game_id=game_id, current_players=all_players)
+    rerun_if_game_state_changed(game_id=game_id, current_players=all_players)
 
 
 def answer_writing_screen(player_id: str, game_id: int, is_host: bool) -> None:
-    st.title("Write your answers!")
+    question_number = determine_question_number(game_id=game_id)
+
+    question = get_question(game_id=game_id, question_number=question_number)
+
+    if question is None:
+        with st.spinner("Generating Question..."):
+            if is_host:
+                retrieved_title, combined_synopsis = (
+                    movie_suggestion.select_film_and_generate_synopsis()
+                )
+                add_question_and_correct_answer(
+                    game_id=game_id,
+                    question_number=question_number,
+                    question=retrieved_title,
+                    correct_answer=combined_synopsis,
+                )
+                question = retrieved_title
+            else:
+                while question is None:
+                    st.sleep(1)
+                    question = get_question(
+                        game_id=game_id, question_number=question_number
+                    )
+
+    st.title(question)
+    st.text_area(
+        label="Your answer:",
+        key=Var.player_answer,
+        on_change=partial(
+            set_player_answer,
+            game_id=game_id,
+            player_id=player_id,
+            question_number=question_number,
+        ),
+    )
+
     st.button(
         "Next",
         on_click=lambda: set_game_state(game_id=game_id, game_stage=GameStage.guessing),
