@@ -97,6 +97,7 @@ def create_tables_if_not_exist() -> None:
             {Var.question_number} INT NOT NULL,
             {Var.question} VARCHAR,
             {Var.correct_answer} VARCHAR,
+            {Var.is_answered} BOOLEAN DEFAULT FALSE,
             PRIMARY KEY ({Var.game_id}, {Var.question_number}),
             FOREIGN KEY ({Var.game_id}) REFERENCES {Tables.games}({Var.game_id}),
         );
@@ -330,10 +331,10 @@ def start_game(game_id: int, n_questions: int) -> None:
     set_game_state(game_id=game_id, game_stage=GameStage.answer_writing)
 
 
-def determine_first_undefined_question_number(game_id: int) -> int | None:
+def determine_first_unanswered_question_number(game_id: int) -> int | None:
     query = f"""
     SELECT MIN({Var.question_number}) FROM {Tables.questions}
-    WHERE {Var.game_id} = {game_id} AND {Var.question} IS NULL;
+    WHERE {Var.is_answered} = FALSE AND {Var.game_id} = {game_id};
     """
     with get_cursor() as con:
         result = con.execute(query).fetchall()
@@ -379,16 +380,56 @@ def add_question_and_correct_answer(
         con.execute(query, variables)
 
 
+def determine_whether_all_answers_in(game_id: int, question_number: int) -> bool:
+    query = f"""
+    SELECT COUNT(*) FROM {Tables.answers}
+    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number} AND {Var.player_answer} IS NULL;
+    """
+    with get_cursor() as con:
+        result = con.execute(query).fetchall()
+
+    if len(result) != 1:
+        raise ValueError(f"Expected result of length 1, found {result}")
+    return result[0][0] == 0
+
+
 def set_player_answer(
     game_id: int,
     player_id: str,
     question_number=int,
 ) -> None:
-    pass
+    player_answer = st.session_state[Var.player_answer]
+    if player_answer is None:
+        raise ValueError("Player answer is None.")
+
+    if player_answer == "":
+        st.error("Answer cannot be empty. Please write your answer.")
+
+    query = f"""
+    UPDATE {Tables.answers} SET {Var.player_answer} = ${Var.player_answer}
+    WHERE {Var.game_id} = ${Var.game_id} AND {Var.player_id} = ${Var.player_id} AND {Var.question_number} = ${Var.question_number};
+    """
+
+    variables = {
+        str(Var.player_answer): player_answer,
+        str(Var.game_id): game_id,
+        str(Var.player_id): player_id,
+        str(Var.question_number): question_number,
+    }
+
+    with get_cursor() as con:
+        con.execute(query, variables)
 
 
 @st.fragment(run_every=1)
-def rerun_if_game_state_changed(
+def rerun_if_game_stage_changed(game_id: int, current_stage: GameStage) -> None:
+    actual_stage = determine_game_stage(game_id)
+    if actual_stage != current_stage:
+        st.rerun()
+
+
+@st.fragment(run_every=1)
+def rerun_if_game_stage_or_players_changed(
     game_id: int, current_players: list[str], current_stage: GameStage
 ) -> None:
     actual_stage = determine_game_stage(game_id)
@@ -490,13 +531,13 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
         on_click=partial(start_game, game_id=game_id, n_questions=6),
         disabled=not is_host,
     )
-    rerun_if_game_state_changed(
+    rerun_if_game_stage_or_players_changed(
         game_id=game_id, current_players=all_players, current_stage=GameStage.game_open
     )
 
 
 def answer_writing_screen(player_id: str, game_id: int, is_host: bool) -> None:
-    question_number = determine_first_undefined_question_number(game_id=game_id)
+    question_number = determine_first_unanswered_question_number(game_id=game_id)
     if not question_number:
         set_game_state(game_id=game_id, game_stage=GameStage.finished)
         st.rerun()
@@ -535,9 +576,18 @@ def answer_writing_screen(player_id: str, game_id: int, is_host: bool) -> None:
         ),
     )
 
+    all_answers_in = determine_whether_all_answers_in(
+        game_id=game_id, question_number=question_number
+    )
+
     st.button(
         "Next",
         on_click=lambda: set_game_state(game_id=game_id, game_stage=GameStage.guessing),
+        disabled=not all_answers_in or not is_host,
+    )
+    rerun_if_game_stage_changed(
+        game_id=game_id,
+        current_stage=GameStage.answer_writing,
     )
 
 
