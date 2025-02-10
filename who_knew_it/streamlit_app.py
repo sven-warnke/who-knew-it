@@ -522,9 +522,17 @@ def add_fake_answers(
 
 
 @st.fragment(run_every=1)
-def rerun_if_game_stage_changed(game_id: int, current_stage: GameStage) -> None:
+def rerun_if_game_stage_changed_or_all_answers_in(
+    game_id: int, current_stage: GameStage, question_number: int
+) -> None:
     actual_stage = determine_game_stage(game_id)
     if actual_stage != current_stage:
+        st.rerun()
+
+    all_answers_in = determine_whether_all_answers_in(
+        game_id=game_id, question_number=question_number
+    )
+    if all_answers_in:
         st.rerun()
 
 
@@ -690,9 +698,10 @@ def answer_writing_screen(player_id: str, game_id: int, is_host: bool) -> None:
         on_click=lambda: set_game_state(game_id=game_id, game_stage=GameStage.guessing),
         disabled=not all_answers_in or not is_host,
     )
-    rerun_if_game_stage_changed(
+    rerun_if_game_stage_changed_or_all_answers_in(
         game_id=game_id,
         current_stage=GameStage.answer_writing,
+        question_number=question_number,
     )
 
 
