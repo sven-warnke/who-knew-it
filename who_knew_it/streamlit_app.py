@@ -22,7 +22,8 @@ class Tables(enum.StrEnum):
     games = "games"
     game_player = "game_player"
     questions = "questions"
-    answers = "answers"
+    player_answers = "player_answers"
+    fake_answers = "fake_answers"
 
 
 class Var(enum.StrEnum):
@@ -38,7 +39,8 @@ class Var(enum.StrEnum):
     question_number = "question_number"
     question = "question"
     correct_answer = "correct_answer"
-    player_answer = "player_answer"
+    answer_text = "answer_text"
+    nth_fake_answer = "nth_fake_answer"
 
 
 class GameStage(enum.IntEnum):
@@ -103,14 +105,24 @@ def create_tables_if_not_exist() -> None:
         );
         """,
         f"""
-        CREATE TABLE IF NOT EXISTS {Tables.answers} (
+        CREATE TABLE IF NOT EXISTS {Tables.player_answers} (
             {Var.game_id} INT,
             {Var.question_number} INT,
             {Var.player_id} VARCHAR(255),
-            {Var.player_answer} VARCHAR,
+            {Var.answer_text} VARCHAR,
             PRIMARY KEY ({Var.game_id}, {Var.question_number}, {Var.player_id}),
             FOREIGN KEY ({Var.game_id}) REFERENCES {Tables.games}({Var.game_id}),
             FOREIGN KEY ({Var.player_id}) REFERENCES {Tables.players}({Var.player_id}),
+        );
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {Tables.fake_answers} (
+            {Var.game_id} INT,
+            {Var.question_number} INT NOT NULL,
+            {Var.nth_fake_answer} INT NOT NULL,
+            {Var.answer_text} VARCHAR,
+            PRIMARY KEY ({Var.game_id}, {Var.question_number}, {Var.nth_fake_answer}),
+            FOREIGN KEY ({Var.game_id}) REFERENCES {Tables.games}({Var.game_id}),
         );
         """,
         f"""
@@ -282,7 +294,7 @@ def join_game(player_id: str, game_id: int, is_host: bool) -> None:
         SELECT '{player_id}', {game_id}, {is_host}
         WHERE ({subquery}) < {N_MAX_PLAYERS};
         """
-        st.text(query)
+        print("join_game: query: ", query)
         with get_cursor() as con:
             con.execute(query)
         joined_succesfully = player_id in get_all_players_in_game(game_id=game_id)
@@ -325,8 +337,47 @@ def initialize_questions(game_id: int, n_questions: int) -> None:
         con.execute(query)
 
 
+def initialize_answers(game_id: int) -> None:
+    query = f"""
+    INSERT INTO {Tables.player_answers} ({Var.game_id}, {Var.question_number}, {Var.player_id}) 
+    SELECT {Tables.questions}.{Var.game_id}, {Tables.questions}.{Var.question_number}, {Tables.game_player}.{Var.player_id}
+    FROM {Tables.questions} 
+    JOIN {Tables.game_player}
+    ON {Tables.questions}.{Var.game_id} = {Tables.game_player}.{Var.game_id}
+    WHERE {Tables.questions}.{Var.game_id} = {game_id};
+    """
+    print("initialize_answers: ", query)
+    with get_cursor() as con:
+        con.execute(query)
+
+
+# def intialize_fake_answers(game_id: int, n_fake_answers: int) -> None:
+#     query = f"""
+#     INSERT INTO {Tables.fake_answers} ({Var.game_id}, {Var.question_number}, {Var.nth_fake_answer})
+#     SELECT {Tables.questions}.{Var.game_id}, {Tables.questions}.{Var.question_number}, {Tables.game_player}.{Var.player_id}
+#     FROM {Tables.questions}
+#     JOIN {Tables.game_player}
+#     ON {Tables.questions}.{Var.game_id} = {Tables.game_player}.{Var.game_id}
+#     WHERE {Tables.questions}.{Var.game_id} = {game_id};
+#     """
+#     print("initialize_fake_answers: ", query)
+#     with get_cursor() as con:
+#         con.execute(query)
+
+
+def get_all_fake_answers(game_id: int, question_number: int) -> list[str]:
+    query = f"""
+    SELECT {Var.answer_text} FROM {Tables.fake_answers}
+    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number};
+    """
+    with get_cursor() as con:
+        result = con.execute(query).fetchall()
+    return [res[0] for res in result]
+
+
 def start_game(game_id: int, n_questions: int) -> None:
     initialize_questions(game_id=game_id, n_questions=n_questions)
+    initialize_answers(game_id=game_id)
 
     set_game_state(game_id=game_id, game_stage=GameStage.answer_writing)
 
@@ -347,6 +398,19 @@ def determine_first_unanswered_question_number(game_id: int) -> int | None:
 def get_question(game_id: int, question_number: int) -> str | None:
     query = f"""
     SELECT ({Var.question}) FROM {Tables.questions}
+    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number};
+    """
+    with get_cursor() as con:
+        result = con.execute(query).fetchall()
+
+    if len(result) != 1:
+        raise ValueError(f"Expected result of length 1, found {result}")
+    return result[0][0]
+
+
+def get_correct_answer(game_id: int, question_number: int) -> str | None:
+    query = f"""
+    SELECT ({Var.correct_answer}) FROM {Tables.questions}
     WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number};
     """
     with get_cursor() as con:
@@ -382,15 +446,30 @@ def add_question_and_correct_answer(
 
 def determine_whether_all_answers_in(game_id: int, question_number: int) -> bool:
     query = f"""
-    SELECT COUNT(*) FROM {Tables.answers}
-    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number} AND {Var.player_answer} IS NULL;
+    SELECT 
+    COUNT(*) FROM {Tables.player_answers}
+    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number} AND {Var.answer_text} IS NULL;
     """
     with get_cursor() as con:
         result = con.execute(query).fetchall()
 
     if len(result) != 1:
         raise ValueError(f"Expected result of length 1, found {result}")
+
+    print("result of determine_whether_all_answers_in: ", result)
     return result[0][0] == 0
+
+
+def get_player_answer_tuples(
+    game_id: int, question_number: int
+) -> list[tuple[str, str]]:
+    query = f"""
+    SELECT {Var.player_id}, {Var.answer_text} FROM {Tables.player_answers}
+    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number};
+    """
+    with get_cursor() as con:
+        result = con.execute(query).fetchall()
+    return result
 
 
 def set_player_answer(
@@ -398,7 +477,7 @@ def set_player_answer(
     player_id: str,
     question_number=int,
 ) -> None:
-    player_answer = st.session_state[Var.player_answer]
+    player_answer = st.session_state[Var.answer_text]
     if player_answer is None:
         raise ValueError("Player answer is None.")
 
@@ -406,17 +485,38 @@ def set_player_answer(
         st.error("Answer cannot be empty. Please write your answer.")
 
     query = f"""
-    UPDATE {Tables.answers} SET {Var.player_answer} = ${Var.player_answer}
+    UPDATE {Tables.player_answers} SET {Var.answer_text} = ${Var.answer_text}
     WHERE {Var.game_id} = ${Var.game_id} AND {Var.player_id} = ${Var.player_id} AND {Var.question_number} = ${Var.question_number};
     """
 
     variables = {
-        str(Var.player_answer): player_answer,
+        str(Var.answer_text): player_answer,
         str(Var.game_id): game_id,
         str(Var.player_id): player_id,
         str(Var.question_number): question_number,
     }
 
+    with get_cursor() as con:
+        con.execute(query, variables)
+
+
+def add_fake_answers(
+    game_id: int, question_number: int, fake_answers: list[str]
+) -> None:
+    variables = {}
+    items = []
+    for i, f_answer in enumerate(fake_answers):
+        variable_name = f"fake_answer_{i}"
+        variables[variable_name] = f_answer
+        items.append(f"({game_id}, {question_number}, {i}, ${variable_name})")
+
+    item_rows = ",\n".join(items)
+    query = f"""
+    INSERT INTO {Tables.fake_answers} ({Var.game_id}, {Var.question_number}, {Var.nth_fake_answer}, {Var.answer_text}) VALUES
+    {item_rows}
+    ON CONFLICT ({Var.game_id}, {Var.question_number}, {Var.nth_fake_answer}) DO NOTHING;
+    """
+    print("add_fake_answers: ", query)
     with get_cursor() as con:
         con.execute(query, variables)
 
@@ -509,7 +609,7 @@ def find_game_screen(player_id: str) -> None:
                 st.markdown(f":{color}[{len(all_players_in_game)}/{N_MAX_PLAYERS}]")
 
     st.button("Refresh")
-    auto_refresh()
+    # auto_refresh()  # Seems to cause reruns between screens
 
 
 def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
@@ -522,6 +622,7 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
         st.error(
             "Seems like you are not in the game. How do you see it then? This should not have happened."
         )
+    print(all_players)
 
     for player in all_players:
         st.text(player)
@@ -538,7 +639,9 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
 
 def answer_writing_screen(player_id: str, game_id: int, is_host: bool) -> None:
     question_number = determine_first_unanswered_question_number(game_id=game_id)
+    print(f"question_number: {question_number}")
     if not question_number:
+        print("All questions answered.")
         set_game_state(game_id=game_id, game_stage=GameStage.finished)
         st.rerun()
 
@@ -547,6 +650,7 @@ def answer_writing_screen(player_id: str, game_id: int, is_host: bool) -> None:
     if question is None:
         with st.spinner("Generating Question..."):
             if is_host:
+                print("Generating Question since I am host")
                 retrieved_title, combined_synopsis = (
                     movie_suggestion.select_film_and_generate_synopsis()
                 )
@@ -558,6 +662,7 @@ def answer_writing_screen(player_id: str, game_id: int, is_host: bool) -> None:
                 )
                 question = retrieved_title
             else:
+                print("Waiting for host to generate question")
                 while question is None:
                     time.sleep(1)
                     question = get_question(
@@ -567,7 +672,7 @@ def answer_writing_screen(player_id: str, game_id: int, is_host: bool) -> None:
     st.title(question)
     st.text_area(
         label="Your answer:",
-        key=Var.player_answer,
+        key=Var.answer_text,
         on_change=partial(
             set_player_answer,
             game_id=game_id,
@@ -592,43 +697,61 @@ def answer_writing_screen(player_id: str, game_id: int, is_host: bool) -> None:
 
 
 def guessing_screen(player_id: str, game_id: int, is_host: bool) -> None:
-    st.title("Here are your options. Which one do you think is correct?")
+    question_number = determine_first_unanswered_question_number(game_id=game_id)
+    if not question_number:
+        print("All questions answered.")
+        set_game_state(game_id=game_id, game_stage=GameStage.finished)
+        st.rerun()
 
-    n_fake_answers = st.number_input(
-        "Number of wrong answers",
-        min_value=0,
-        max_value=MAX_N_FAKE_ANSWERS,
-        value=DEFAULT_N_FAKE_ANSWERS,
+    question = get_question(game_id=game_id, question_number=question_number)
+
+    if question is None:
+        raise ValueError(
+            "Question is None. This should not have happened. Something is wrong."
+        )
+    st.title(question)
+    st.header("Here are your options. Which one do you think is correct?")
+
+    retrieved_title = question
+    combined_synopsis = get_correct_answer(
+        game_id=game_id, question_number=question_number
+    )
+    if combined_synopsis is None:
+        raise ValueError(
+            "combined_synopsis is None. This should not have happened. Something is wrong."
+        )
+
+    fake_answers = get_all_fake_answers(
+        game_id=game_id, question_number=question_number
     )
 
-    if not all_in_state_and_not_none([Var.retrieved, Var.answer_list]):
-        with st.spinner("Generating Question..."):
-            retrieved_title, combined_synopsis = (
-                movie_suggestion.select_film_and_generate_synopsis()
-            )
+    if not fake_answers:
+        n_fake_answers = 2  # TODO: make customizable at some point, low priority
 
         with st.spinner("Writing the wrong answers..."):
-            answer_list = [answers.Answer(combined_synopsis, correct=True)]
-            for _ in range(n_fake_answers):
-                fake_answer_text = fake_answer.create_fake_movie_synopsis(
-                    info_about_film=retrieved_title,
-                    avoid_examples=[a.text for a in answer_list],
+            if is_host:
+                fake_answers = []
+                for _ in range(n_fake_answers):
+                    fake_answer_text = fake_answer.create_fake_movie_synopsis(
+                        info_about_film=retrieved_title,
+                        avoid_examples=[combined_synopsis],
+                    )
+                    fake_answers.append(fake_answer_text)
+
+                add_fake_answers(
+                    game_id=game_id,
+                    question_number=question_number,
+                    fake_answers=fake_answers,
                 )
-                answer_list.append(answers.Answer(text=fake_answer_text, correct=False))
 
-        random.shuffle(answer_list)
-
-        st.session_state[Var.retrieved] = (retrieved_title, combined_synopsis)
-        st.session_state[Var.answer_list] = answer_list
-        st.session_state[Var.is_answered] = False
-
-    else:
-        retrieved_title, combined_synopsis = st.session_state[Var.retrieved]
-        answer_list = st.session_state[Var.answer_list]
-
+    player_answer_tuples = get_player_answer_tuples(
+        game_id=game_id, question_number=question_number
+    )
     st.header(f"What's the plot of the film {retrieved_title}?")
 
-    is_answered = st.session_state[Var.is_answered]
+    answer_list = (
+        [combined_synopsis] + fake_answers + [i[1] for i in player_answer_tuples]
+    )
 
     button_labels = get_button_labels(len(answer_list))
 
@@ -637,28 +760,28 @@ def guessing_screen(player_id: str, game_id: int, is_host: bool) -> None:
         letter_col, text_col = st.columns([0.2, 0.8], border=True)
         with letter_col:
             b_output = st.button(
-                label=f"{label}", disabled=is_answered, on_click=set_is_answered
+                label=f"{label}", disabled=False, on_click=set_is_answered
             )
             button_outputs.append(b_output)
         with text_col:
-            st.text(an_answer.text)
+            st.text(an_answer)
 
-    initialize_points_if_not_exist()
+    # initialize_points_if_not_exist()
 
-    if any(button_outputs):
-        [choice] = [i for i, b in enumerate(button_outputs) if b]
+    # if any(button_outputs):
+    #     [choice] = [i for i, b in enumerate(button_outputs) if b]
 
-        [correct_answer] = [i for i, a in enumerate(answer_list) if a.correct]
+    #     [correct_answer] = [i for i, a in enumerate(answer_list) if a.correct]
 
-        if choice == correct_answer:
-            st.text("Correct")
-            increase_points()
-        else:
-            st.text("False!")
-            st.text(f"The correct answer was {button_labels[correct_answer]}.")
+    #     if choice == correct_answer:
+    #         st.text("Correct")
+    #         increase_points()
+    #     else:
+    #         st.text("False!")
+    #         st.text(f"The correct answer was {button_labels[correct_answer]}.")
 
-    st.metric(label="Points", value=st.session_state[Var.points])
-    st.button("Next", on_click=reset_question_state)
+    # st.metric(label="Points", value=st.session_state[Var.points])
+    # st.button("Next", on_click=reset_question_state)
 
 
 def finished_screen(player_id: str, game_id: int, is_host: bool) -> None:
