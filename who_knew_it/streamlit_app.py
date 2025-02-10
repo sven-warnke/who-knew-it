@@ -752,6 +752,12 @@ def guessing_screen(player_id: str, game_id: int, is_host: bool) -> None:
                     question_number=question_number,
                     fake_answers=fake_answers,
                 )
+            else:
+                while not fake_answers:
+                    time.sleep(1)
+                    fake_answers = get_all_fake_answers(
+                        game_id=game_id, question_number=question_number
+                    )
 
     player_answer_tuples = get_player_answer_tuples(
         game_id=game_id, question_number=question_number
