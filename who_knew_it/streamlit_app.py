@@ -17,6 +17,7 @@ N_MAX_PLAYERS = 5
 DB_FILE = Path(__file__).parent.parent / "database" / "file.db"
 
 HOUSE_PLAYER_ID_PREFIX = "house"
+CORRECT_ANSWER = "correct_answer"
 
 
 class Tables(enum.StrEnum):
@@ -25,7 +26,6 @@ class Tables(enum.StrEnum):
     game_player = "game_player"
     questions = "questions"
     player_answers = "player_answers"
-    fake_answers = "fake_answers"
 
 
 class Var(enum.StrEnum):
@@ -42,8 +42,9 @@ class Var(enum.StrEnum):
     question = "question"
     correct_answer = "correct_answer"
     answer_text = "answer_text"
-    nth_fake_answer = "nth_fake_answer"
     is_house = "is_house"
+    answer_order = "answer_order"
+    correct_answer_rank = "correct_answer_rank"
 
 
 class GameStage(enum.IntEnum):
@@ -120,6 +121,7 @@ def create_tables_if_not_exist() -> None:
             {Var.question} VARCHAR,
             {Var.correct_answer} VARCHAR,
             {Var.is_answered} BOOLEAN DEFAULT FALSE,
+            {Var.correct_answer_rank} FLOAT DEFAULT random(),
             PRIMARY KEY ({Var.game_id}, {Var.question_number}),
             FOREIGN KEY ({Var.game_id}) REFERENCES {Tables.games}({Var.game_id}),
         );
@@ -130,6 +132,7 @@ def create_tables_if_not_exist() -> None:
             {Var.question_number} INT,
             {Var.player_id} VARCHAR(255),
             {Var.answer_text} VARCHAR,
+            {Var.answer_order} FLOAT DEFAULT random(),
             PRIMARY KEY ({Var.game_id}, {Var.question_number}, {Var.player_id}),
             FOREIGN KEY ({Var.game_id}) REFERENCES {Tables.games}({Var.game_id}),
             FOREIGN KEY ({Var.player_id}) REFERENCES {Tables.players}({Var.player_id}),
@@ -450,7 +453,11 @@ def determine_whether_all_answers_in(game_id: int, question_number: int) -> bool
     query = f"""
     SELECT 
     COUNT(*) FROM {Tables.player_answers}
-    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number} AND {Var.answer_text} IS NULL;
+    JOIN {Tables.players} ON {Tables.player_answers}.{Var.player_id} = {Tables.players}.{Var.player_id}
+    WHERE {Tables.player_answers}.{Var.game_id} = {game_id} 
+    AND {Tables.player_answers}.{Var.question_number} = {question_number} 
+    AND {Tables.players}.{Var.is_house} = FALSE 
+    AND {Tables.player_answers}.{Var.answer_text} IS NULL;
     """
     with get_cursor() as con:
         result = con.execute(query).fetchall()
@@ -464,9 +471,9 @@ def determine_whether_all_answers_in(game_id: int, question_number: int) -> bool
 
 def get_player_answer_tuples(
     game_id: int, question_number: int
-) -> list[tuple[str, str]]:
+) -> list[tuple[str, str, float]]:
     query = f"""
-    SELECT {Var.player_id}, {Var.answer_text} FROM {Tables.player_answers}
+    SELECT {Var.player_id}, {Var.answer_text}, {Var.answer_order} FROM {Tables.player_answers}
     WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number};
     """
     with get_cursor() as con:
@@ -524,6 +531,19 @@ def add_fake_answers(
     print("variables: ", variables)
     with get_cursor() as con:
         con.execute(query, variables)
+
+
+def get_correct_answer_rank(game_id: int, question_number: int) -> float:
+    query = f"""
+    SELECT {Var.answer_order} FROM {Tables.questions}
+    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number};
+    """
+    with get_cursor() as con:
+        result = con.execute(query).fetchall()
+    if len(result) != 1:
+        raise ValueError(f"Expected result of length 1, found {result}")
+
+    return result[0][0]
 
 
 @st.fragment(run_every=1)
@@ -767,11 +787,15 @@ def guessing_screen(player_id: str, game_id: int, is_host: bool) -> None:
     player_answer_tuples = get_player_answer_tuples(
         game_id=game_id, question_number=question_number
     )
+    correct_answer_rank = get_correct_answer_rank(
+        game_id=game_id, question_number=question_number
+    )
+
+    player_answer_tuples += [(CORRECT_ANSWER, combined_synopsis, correct_answer_rank)]
+    player_answer_tuples = sorted(player_answer_tuples, key=lambda x: x[2])
     st.header(f"What's the plot of the film {retrieved_title}?")
 
-    answer_list = (
-        [combined_synopsis] + fake_answers + [i[1] for i in player_answer_tuples]
-    )
+    answer_list = [i[1] for i in player_answer_tuples]
 
     button_labels = get_button_labels(len(answer_list))
 
