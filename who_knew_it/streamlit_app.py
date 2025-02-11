@@ -364,7 +364,7 @@ def initialize_answers(game_id: int) -> None:
         con.execute(query)
 
 
-def get_all_fake_answers(game_id: int, question_number: int) -> list[str]:
+def get_all_fake_answers(game_id: int, question_number: int) -> list[str | None]:
     query = f"""
     SELECT {Var.answer_text} FROM {Tables.player_answers}
     JOIN {Tables.players} ON {Tables.player_answers}.{Var.player_id} = {Tables.players}.{Var.player_id}
@@ -379,7 +379,7 @@ def get_all_fake_answers(game_id: int, question_number: int) -> list[str]:
 
 def start_game(game_id: int, n_questions: int) -> None:
     for i in range(DEFAULT_N_FAKE_ANSWERS):
-        join_game(player_id=generate_player_id(), game_id=game_id, is_host=False)
+        join_game(player_id=get_house_player_id(i), game_id=game_id, is_host=False)
 
     initialize_questions(game_id=game_id, n_questions=n_questions)
     initialize_answers(game_id=game_id)
@@ -510,8 +510,13 @@ def set_player_answer(
 
 
 def add_fake_answers(
-    game_id: int, question_number: int, fake_answers: list[str]
+    game_id: int, question_number: int, fake_answers: list[str | None]
 ) -> None:
+    if any(a is None for a in fake_answers):
+        raise ValueError(
+            "Fake answers are still None. This should not have happened. Something is wrong."
+        )
+
     variables = {}
     items = []
     for i, f_answer in enumerate(fake_answers):
@@ -525,7 +530,8 @@ def add_fake_answers(
     query = f"""
     INSERT INTO {Tables.player_answers} ({Var.game_id}, {Var.question_number}, {Var.player_id}, {Var.answer_text}) VALUES
     {item_rows}
-    ON CONFLICT ({Var.game_id}, {Var.question_number}, {Var.player_id}) DO NOTHING;
+    ON CONFLICT ({Var.game_id}, {Var.question_number}, {Var.player_id}) 
+    DO UPDATE SET {Var.answer_text} = EXCLUDED.{Var.answer_text};
     """
     print("add_fake_answers: ", query)
     print("variables: ", variables)
@@ -535,7 +541,7 @@ def add_fake_answers(
 
 def get_correct_answer_rank(game_id: int, question_number: int) -> float:
     query = f"""
-    SELECT {Var.answer_order} FROM {Tables.questions}
+    SELECT {Var.correct_answer_rank} FROM {Tables.questions}
     WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number};
     """
     with get_cursor() as con:
@@ -548,17 +554,21 @@ def get_correct_answer_rank(game_id: int, question_number: int) -> float:
 
 @st.fragment(run_every=1)
 def rerun_if_game_stage_changed_or_all_answers_in(
-    game_id: int, current_stage: GameStage, question_number: int
+    game_id: int,
+    current_stage: GameStage,
+    question_number: int,
+    all_answers_in_already_before: bool,
 ) -> None:
     actual_stage = determine_game_stage(game_id)
     if actual_stage != current_stage:
         st.rerun()
 
-    all_answers_in = determine_whether_all_answers_in(
-        game_id=game_id, question_number=question_number
-    )
-    if all_answers_in:
-        st.rerun()
+    if not all_answers_in_already_before:
+        all_answers_in = determine_whether_all_answers_in(
+            game_id=game_id, question_number=question_number
+        )
+        if all_answers_in:
+            st.rerun()
 
 
 @st.fragment(run_every=1)
@@ -727,6 +737,7 @@ def answer_writing_screen(player_id: str, game_id: int, is_host: bool) -> None:
         game_id=game_id,
         current_stage=GameStage.answer_writing,
         question_number=question_number,
+        all_answers_in_already_before=all_answers_in,
     )
 
 
@@ -759,8 +770,8 @@ def guessing_screen(player_id: str, game_id: int, is_host: bool) -> None:
         game_id=game_id, question_number=question_number
     )
 
-    if not fake_answers:
-        n_fake_answers = 2  # TODO: make customizable at some point, low priority
+    if any(a is None for a in fake_answers):
+        n_fake_answers = len(fake_answers)
 
         with st.spinner("Writing the wrong answers..."):
             if is_host:
@@ -778,7 +789,7 @@ def guessing_screen(player_id: str, game_id: int, is_host: bool) -> None:
                     fake_answers=fake_answers,
                 )
             else:
-                while not fake_answers:
+                while any(a is None for a in fake_answers):
                     time.sleep(1)
                     fake_answers = get_all_fake_answers(
                         game_id=game_id, question_number=question_number
