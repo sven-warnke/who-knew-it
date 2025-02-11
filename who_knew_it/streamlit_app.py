@@ -16,6 +16,8 @@ N_MAX_PLAYERS = 5
 
 DB_FILE = Path(__file__).parent.parent / "database" / "file.db"
 
+HOUSE_PLAYER_ID_PREFIX = "house"
+
 
 class Tables(enum.StrEnum):
     players = "players"
@@ -41,6 +43,7 @@ class Var(enum.StrEnum):
     correct_answer = "correct_answer"
     answer_text = "answer_text"
     nth_fake_answer = "nth_fake_answer"
+    is_house = "is_house"
 
 
 class GameStage(enum.IntEnum):
@@ -49,6 +52,10 @@ class GameStage(enum.IntEnum):
     answer_writing = 2
     guessing = 3
     finished = 4
+
+
+def get_house_player_id(i: int) -> str:
+    return f"{HOUSE_PLAYER_ID_PREFIX}_{i}"
 
 
 @st.cache_resource
@@ -60,9 +67,10 @@ def get_cursor() -> duckdb.DuckDBPyConnection:
     return get_db_connection().cursor()
 
 
+@st.cache_resource
 def create_tables_if_not_exist() -> None:
-    if DB_FILE.exists():
-        return
+    for f in DB_FILE.parent.glob("*"):
+        f.unlink()
 
     queries = [
         """
@@ -80,9 +88,21 @@ def create_tables_if_not_exist() -> None:
         f"""
                 CREATE TABLE IF NOT EXISTS {Tables.players} (
                     {Var.player_id} VARCHAR(255) PRIMARY KEY,
-                    {Var.player_name} VARCHAR(255) NOT NULL
+                    {Var.player_name} VARCHAR(255) NOT NULL,
+                    {Var.is_house} BOOLEAN DEFAULT FALSE
                 );
                 """,
+        f"""
+                INSERT INTO {Tables.players} ({Var.player_id}, {Var.player_name}, {Var.is_house}) 
+                VALUES 
+                ('{get_house_player_id(0)}', '{get_house_player_id(0)}', TRUE),
+                ('{get_house_player_id(1)}', '{get_house_player_id(1)}', TRUE),
+                ('{get_house_player_id(2)}', '{get_house_player_id(2)}', TRUE),
+                ('{get_house_player_id(3)}', '{get_house_player_id(3)}', TRUE),
+                ('{get_house_player_id(4)}', '{get_house_player_id(4)}', TRUE),
+                ('{get_house_player_id(5)}', '{get_house_player_id(5)}', TRUE)
+                ;
+        """,
         f"""
                 CREATE TABLE IF NOT EXISTS {Tables.game_player} (
                     {Var.game_id} INT,
@@ -113,16 +133,6 @@ def create_tables_if_not_exist() -> None:
             PRIMARY KEY ({Var.game_id}, {Var.question_number}, {Var.player_id}),
             FOREIGN KEY ({Var.game_id}) REFERENCES {Tables.games}({Var.game_id}),
             FOREIGN KEY ({Var.player_id}) REFERENCES {Tables.players}({Var.player_id}),
-        );
-        """,
-        f"""
-        CREATE TABLE IF NOT EXISTS {Tables.fake_answers} (
-            {Var.game_id} INT,
-            {Var.question_number} INT NOT NULL,
-            {Var.nth_fake_answer} INT NOT NULL,
-            {Var.answer_text} VARCHAR,
-            PRIMARY KEY ({Var.game_id}, {Var.question_number}, {Var.nth_fake_answer}),
-            FOREIGN KEY ({Var.game_id}) REFERENCES {Tables.games}({Var.game_id}),
         );
         """,
         f"""
@@ -351,24 +361,13 @@ def initialize_answers(game_id: int) -> None:
         con.execute(query)
 
 
-# def intialize_fake_answers(game_id: int, n_fake_answers: int) -> None:
-#     query = f"""
-#     INSERT INTO {Tables.fake_answers} ({Var.game_id}, {Var.question_number}, {Var.nth_fake_answer})
-#     SELECT {Tables.questions}.{Var.game_id}, {Tables.questions}.{Var.question_number}, {Tables.game_player}.{Var.player_id}
-#     FROM {Tables.questions}
-#     JOIN {Tables.game_player}
-#     ON {Tables.questions}.{Var.game_id} = {Tables.game_player}.{Var.game_id}
-#     WHERE {Tables.questions}.{Var.game_id} = {game_id};
-#     """
-#     print("initialize_fake_answers: ", query)
-#     with get_cursor() as con:
-#         con.execute(query)
-
-
 def get_all_fake_answers(game_id: int, question_number: int) -> list[str]:
     query = f"""
-    SELECT {Var.answer_text} FROM {Tables.fake_answers}
-    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number};
+    SELECT {Var.answer_text} FROM {Tables.player_answers}
+    JOIN {Tables.players} ON {Tables.player_answers}.{Var.player_id} = {Tables.players}.{Var.player_id}
+    WHERE {Tables.player_answers}.{Var.game_id} = {game_id} 
+    AND {Tables.player_answers}.{Var.question_number} = {question_number}
+    AND {Tables.players}.{Var.is_house} = TRUE;
     """
     with get_cursor() as con:
         result = con.execute(query).fetchall()
@@ -376,6 +375,9 @@ def get_all_fake_answers(game_id: int, question_number: int) -> list[str]:
 
 
 def start_game(game_id: int, n_questions: int) -> None:
+    for i in range(DEFAULT_N_FAKE_ANSWERS):
+        join_game(player_id=generate_player_id(), game_id=game_id, is_host=False)
+
     initialize_questions(game_id=game_id, n_questions=n_questions)
     initialize_answers(game_id=game_id)
 
@@ -508,15 +510,18 @@ def add_fake_answers(
     for i, f_answer in enumerate(fake_answers):
         variable_name = f"fake_answer_{i}"
         variables[variable_name] = f_answer
-        items.append(f"({game_id}, {question_number}, {i}, ${variable_name})")
+        items.append(
+            f"({game_id}, {question_number}, '{get_house_player_id(i)}', ${variable_name})"
+        )
 
     item_rows = ",\n".join(items)
     query = f"""
-    INSERT INTO {Tables.fake_answers} ({Var.game_id}, {Var.question_number}, {Var.nth_fake_answer}, {Var.answer_text}) VALUES
+    INSERT INTO {Tables.player_answers} ({Var.game_id}, {Var.question_number}, {Var.player_id}, {Var.answer_text}) VALUES
     {item_rows}
-    ON CONFLICT ({Var.game_id}, {Var.question_number}, {Var.nth_fake_answer}) DO NOTHING;
+    ON CONFLICT ({Var.game_id}, {Var.question_number}, {Var.player_id}) DO NOTHING;
     """
     print("add_fake_answers: ", query)
+    print("variables: ", variables)
     with get_cursor() as con:
         con.execute(query, variables)
 
