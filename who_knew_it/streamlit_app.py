@@ -3,12 +3,12 @@ import streamlit as st
 import enum
 from who_knew_it import fake_answer
 from who_knew_it import answers
-import random
 from who_knew_it import movie_suggestion
 import duckdb
 import uuid
 from pathlib import Path
 from functools import partial
+import dataclasses
 
 DEFAULT_N_FAKE_ANSWERS = 2
 MAX_N_FAKE_ANSWERS = 4
@@ -17,7 +17,7 @@ N_MAX_PLAYERS = 5
 DB_FILE = Path(__file__).parent.parent / "database" / "file.db"
 
 HOUSE_PLAYER_ID_PREFIX = "house"
-CORRECT_ANSWER = "correct_answer"
+CORRECT_ANSWER_ID = "correct_answer"
 
 
 class Tables(enum.StrEnum):
@@ -45,6 +45,7 @@ class Var(enum.StrEnum):
     is_house = "is_house"
     answer_order = "answer_order"
     correct_answer_rank = "correct_answer_rank"
+    player_id_of_chosen_answer = "player_id_of_chosen_answer"
 
 
 class GameStage(enum.IntEnum):
@@ -133,9 +134,12 @@ def create_tables_if_not_exist() -> None:
             {Var.player_id} VARCHAR(255),
             {Var.answer_text} VARCHAR,
             {Var.answer_order} FLOAT DEFAULT random(),
+            {Var.player_id_of_chosen_answer} VARCHAR(255),
             PRIMARY KEY ({Var.game_id}, {Var.question_number}, {Var.player_id}),
             FOREIGN KEY ({Var.game_id}) REFERENCES {Tables.games}({Var.game_id}),
             FOREIGN KEY ({Var.player_id}) REFERENCES {Tables.players}({Var.player_id}),
+            FOREIGN KEY ({Var.player_id_of_chosen_answer}) REFERENCES {Tables.players}({Var.player_id}),
+            FOREIGN KEY ({Var.game_id}, {Var.question_number}) REFERENCES {Tables.questions}({Var.game_id}, {Var.question_number})
         );
         """,
         f"""
@@ -469,16 +473,23 @@ def determine_whether_all_answers_in(game_id: int, question_number: int) -> bool
     return result[0][0] == 0
 
 
+@dataclasses.dataclass
+class PlayerAnswerTuple:
+    player_id: str
+    answer_text: str
+    answer_order: float
+
+
 def get_player_answer_tuples(
     game_id: int, question_number: int
-) -> list[tuple[str, str, float]]:
+) -> list[PlayerAnswerTuple]:
     query = f"""
     SELECT {Var.player_id}, {Var.answer_text}, {Var.answer_order} FROM {Tables.player_answers}
     WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number};
     """
     with get_cursor() as con:
         result = con.execute(query).fetchall()
-    return result
+    return [PlayerAnswerTuple(*res) for res in result]
 
 
 def set_player_answer(
@@ -550,6 +561,40 @@ def get_correct_answer_rank(game_id: int, question_number: int) -> float:
         raise ValueError(f"Expected result of length 1, found {result}")
 
     return result[0][0]
+
+
+def get_player_id_who_wrote_chosen_answer(
+    game_id: int, question_number: int, player_id: str
+) -> str | None:
+    query = f"""
+    SELECT {Var.player_id_of_chosen_answer} FROM {Tables.player_answers}
+    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number} AND {Var.player_id} = '{player_id}';
+    """
+    with get_cursor() as con:
+        result = con.execute(query).fetchall()
+    if len(result) != 1:
+        raise ValueError(f"Expected result of length 1, found {result}")
+
+    return result[0][0]
+
+
+def set_players_chosen_answers_player_id(
+    game_id: int, question_number: int, player_id: str, chosen_player_id: str
+) -> None:
+    """
+    We track which answer was chosen by the player's id who wrote the answer.
+    """
+    if player_id == chosen_player_id:
+        st.error("You cannot choose your own answer.")
+
+    else:
+        query = f"""
+        UPDATE {Tables.player_answers}
+        SET {Var.player_id_of_chosen_answer} = '{chosen_player_id}'
+        WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number} AND {Var.player_id} = '{player_id}';
+        """
+        with get_cursor() as con:
+            con.execute(query)
 
 
 @st.fragment(run_every=1)
@@ -802,24 +847,41 @@ def guessing_screen(player_id: str, game_id: int, is_host: bool) -> None:
         game_id=game_id, question_number=question_number
     )
 
-    player_answer_tuples += [(CORRECT_ANSWER, combined_synopsis, correct_answer_rank)]
-    player_answer_tuples = sorted(player_answer_tuples, key=lambda x: x[2])
+    player_answer_tuples += [
+        PlayerAnswerTuple(CORRECT_ANSWER_ID, combined_synopsis, correct_answer_rank)
+    ]
+    player_answer_tuples = sorted(player_answer_tuples, key=lambda x: x.answer_order)
     st.header(f"What's the plot of the film {retrieved_title}?")
 
-    answer_list = [i[1] for i in player_answer_tuples]
+    button_labels = get_button_labels(len(player_answer_tuples))
 
-    button_labels = get_button_labels(len(answer_list))
+    player_answer = get_player_id_who_wrote_chosen_answer(
+        player_id=player_id, game_id=game_id, question_number=question_number
+    )
+    player_has_chosen = player_answer is not None
 
-    button_outputs = []
-    for label, an_answer in zip(button_labels, answer_list, strict=True):
+    for label, answer_tuple in zip(button_labels, player_answer_tuples, strict=True):
         letter_col, text_col = st.columns([0.2, 0.8], border=True)
+        if player_answer == answer_tuple.player_id:
+            icon = "✅"
+        else:
+            icon = None
+
         with letter_col:
-            b_output = st.button(
-                label=f"{label}", disabled=False, on_click=set_is_answered
+            st.button(
+                label=f"{label}",
+                icon=icon,
+                disabled=player_has_chosen,
+                on_click=partial(
+                    set_players_chosen_answers_player_id,
+                    game_id=game_id,
+                    player_id=player_id,
+                    question_number=question_number,
+                    chosen_player_id=answer_tuple.player_id,
+                ),
             )
-            button_outputs.append(b_output)
         with text_col:
-            st.text(an_answer)
+            st.text(answer_tuple.answer_text)
 
     # initialize_points_if_not_exist()
 
