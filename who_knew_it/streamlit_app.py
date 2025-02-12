@@ -639,10 +639,12 @@ def rerun_if_question_is_answered(
     game_id: int, question_number: int, is_host: bool
 ) -> None:
     is_answered = question_is_answered(game_id=game_id, question_number=question_number)
-    if is_host:
-        set_game_state(game_id=game_id, game_stage=GameStage.reveal)
+    print("is_answered: ", is_answered)
+    if is_answered:
+        if is_host:
+            print("Setting game stage to reveal")
+            set_game_state(game_id=game_id, game_stage=GameStage.reveal)
 
-    if not is_answered:
         st.rerun()
 
 
@@ -965,10 +967,10 @@ def get_reveal_info_from_player_answers(
     WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number}
     GROUP BY {Var.player_id_of_chosen_answer}
     ) AS fooled_players_table
-    ON {Tables.player_answers}.{Var.player_id} = {Var.player_id_of_chosen_answer}
+    ON {Tables.player_answers}.{Var.player_id} = fooled_players_table.{Var.player_id_of_chosen_answer}
     WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number};
     """
-
+    print("get_reveal_info_from_player_answers: ", query)
     with get_cursor() as con:
         result = con.execute(query).fetchall()
     return [RevealTuple(*res) for res in result]
