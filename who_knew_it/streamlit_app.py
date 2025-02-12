@@ -2,7 +2,6 @@ import time
 import streamlit as st
 import enum
 from who_knew_it import fake_answer
-from who_knew_it import answers
 from who_knew_it import movie_suggestion
 import duckdb
 import uuid
@@ -46,6 +45,7 @@ class Var(enum.StrEnum):
     answer_order = "answer_order"
     correct_answer_rank = "correct_answer_rank"
     player_id_of_chosen_answer = "player_id_of_chosen_answer"
+    fooled_players = "fooled_players"
 
 
 class GameStage(enum.IntEnum):
@@ -53,7 +53,8 @@ class GameStage(enum.IntEnum):
     game_open = 1
     answer_writing = 2
     guessing = 3
-    finished = 4
+    reveal = 4
+    finished = 5
 
 
 def get_house_player_id(i: int) -> str:
@@ -138,8 +139,6 @@ def create_tables_if_not_exist() -> None:
             PRIMARY KEY ({Var.game_id}, {Var.question_number}, {Var.player_id}),
             FOREIGN KEY ({Var.game_id}) REFERENCES {Tables.games}({Var.game_id}),
             FOREIGN KEY ({Var.player_id}) REFERENCES {Tables.players}({Var.player_id}),
-            FOREIGN KEY ({Var.player_id_of_chosen_answer}) REFERENCES {Tables.players}({Var.player_id}),
-            FOREIGN KEY ({Var.game_id}, {Var.question_number}) REFERENCES {Tables.questions}({Var.game_id}, {Var.question_number})
         );
         """,
         f"""
@@ -635,6 +634,32 @@ def auto_refresh():
     st.rerun()
 
 
+@st.fragment(run_every=1)
+def rerun_if_question_is_answered(
+    game_id: int, question_number: int, is_host: bool
+) -> None:
+    is_answered = question_is_answered(game_id=game_id, question_number=question_number)
+    if is_host:
+        set_game_state(game_id=game_id, game_stage=GameStage.reveal)
+
+    if not is_answered:
+        st.rerun()
+
+
+def question_is_answered(game_id: int, question_number: int) -> bool:
+    query = f"""
+    SELECT {Var.player_id_of_chosen_answer} FROM {Tables.player_answers}
+    JOIN {Tables.players} ON {Tables.player_answers}.{Var.player_id} = {Tables.players}.{Var.player_id}
+    WHERE {Tables.player_answers}.{Var.game_id} = {game_id} AND {Tables.player_answers}.{Var.question_number} = {question_number} 
+    AND {Tables.players}.{Var.is_house} = FALSE;
+    """
+    print("rerun_if_question_is_answered, query:", query)
+
+    with get_cursor() as con:
+        result = con.execute(query).fetchall()
+    return not any(res[0] is None for res in result)
+
+
 def main():
     with st.sidebar:
         unsafe_sql = st.text_area(
@@ -660,19 +685,48 @@ def main():
     else:
         is_host = is_player_host(player_id=player_id, game_id=game_id)
 
-        match game_stage:
-            case GameStage.game_open:
-                open_game_screen(player_id=player_id, game_id=game_id, is_host=is_host)
-            case GameStage.answer_writing:
-                answer_writing_screen(
-                    player_id=player_id, game_id=game_id, is_host=is_host
-                )
-            case GameStage.guessing:
-                guessing_screen(player_id=player_id, game_id=game_id, is_host=is_host)
-            case GameStage.finished:
-                finished_screen(player_id=player_id, game_id=game_id, is_host=is_host)
-            case unreachable:
-                raise ValueError(f"Found {unreachable}")
+        if game_stage == GameStage.game_open:
+            open_game_screen(player_id=player_id, game_id=game_id, is_host=is_host)
+
+        elif game_stage == GameStage.finished:
+            finished_screen(player_id=player_id, game_id=game_id, is_host=is_host)
+
+        else:
+            question_number = determine_first_unanswered_question_number(
+                game_id=game_id
+            )
+            print(f"question_number: {question_number}")
+            if question_number is None:
+                print("All questions answered.")
+                set_game_state(game_id=game_id, game_stage=GameStage.finished)
+                st.rerun()
+
+            match game_stage:
+                case GameStage.answer_writing:
+                    answer_writing_screen(
+                        player_id=player_id,
+                        game_id=game_id,
+                        is_host=is_host,
+                        question_number=question_number,
+                    )
+                case GameStage.guessing:
+                    guessing_screen(
+                        player_id=player_id,
+                        game_id=game_id,
+                        is_host=is_host,
+                        question_number=question_number,
+                    )
+
+                case GameStage.reveal:
+                    reveal_screen(
+                        player_id=player_id,
+                        game_id=game_id,
+                        is_host=is_host,
+                        question_number=question_number,
+                    )
+
+                case unreachable:
+                    raise ValueError(f"Found {unreachable}")
 
 
 def find_game_screen(player_id: str) -> None:
@@ -737,14 +791,9 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
     )
 
 
-def answer_writing_screen(player_id: str, game_id: int, is_host: bool) -> None:
-    question_number = determine_first_unanswered_question_number(game_id=game_id)
-    print(f"question_number: {question_number}")
-    if not question_number:
-        print("All questions answered.")
-        set_game_state(game_id=game_id, game_stage=GameStage.finished)
-        st.rerun()
-
+def answer_writing_screen(
+    player_id: str, game_id: int, is_host: bool, question_number: int
+) -> None:
     question = get_question(game_id=game_id, question_number=question_number)
 
     if question is None:
@@ -798,13 +847,9 @@ def answer_writing_screen(player_id: str, game_id: int, is_host: bool) -> None:
     )
 
 
-def guessing_screen(player_id: str, game_id: int, is_host: bool) -> None:
-    question_number = determine_first_unanswered_question_number(game_id=game_id)
-    if not question_number:
-        print("All questions answered.")
-        set_game_state(game_id=game_id, game_stage=GameStage.finished)
-        st.rerun()
-
+def guessing_screen(
+    player_id: str, game_id: int, is_host: bool, question_number: int
+) -> None:
     question = get_question(game_id=game_id, question_number=question_number)
 
     if question is None:
@@ -895,22 +940,88 @@ def guessing_screen(player_id: str, game_id: int, is_host: bool) -> None:
         with text_col:
             st.text(answer_tuple.answer_text)
 
-    # initialize_points_if_not_exist()
 
-    # if any(button_outputs):
-    #     [choice] = [i for i, b in enumerate(button_outputs) if b]
+@dataclasses.dataclass
+class RevealTuple:
+    player_id: str
+    answer_text: str
+    fooled_players: list[str]
 
-    #     [correct_answer] = [i for i, a in enumerate(answer_list) if a.correct]
 
-    #     if choice == correct_answer:
-    #         st.text("Correct")
-    #         increase_points()
+def get_reveal_info_from_player_answers(
+    game_id: int, question_number: int
+) -> list[RevealTuple]:
+    query = f"""
+    SELECT {Tables.player_answers}.{Var.player_id}, {Tables.player_answers}.{Var.answer_text}, fooled_players_table.{Var.fooled_players}
+    FROM {Tables.player_answers}
+    
+    JOIN
+    (
+    SELECT {Var.player_id_of_chosen_answer}, LIST({Var.player_id}) AS {Var.fooled_players} FROM {Tables.player_answers}
+    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number}
+    GROUP BY {Var.player_id_of_chosen_answer}
+    ) AS fooled_players_table
+    ON {Tables.player_answers}.{Var.player_id} = {Var.player_id_of_chosen_answer}
+    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number};
+    """
+
+    with get_cursor() as con:
+        result = con.execute(query).fetchall()
+    return [RevealTuple(*res) for res in result]
+
+
+def reveal_screen(
+    player_id: str, game_id: int, is_host: bool, question_number: int
+) -> None:
+    reveal_info = get_reveal_info_from_player_answers(
+        game_id=game_id, question_number=question_number
+    )
+    st.write(reveal_info)
+    # question = get_question(game_id=game_id, question_number=question_number)
+
+    # if question is None:
+    #     raise ValueError(
+    #         "Question is None. This should not have happened. Something is wrong."
+    #     )
+    # player_answer_tuples = get_player_answer_tuples(
+    #     game_id=game_id, question_number=question_number
+    # )
+    # combined_synopsis = get_correct_answer(
+    #     game_id=game_id, question_number=question_number
+    # )
+    # correct_answer_rank = get_correct_answer_rank(
+    #     game_id=game_id, question_number=question_number
+    # )
+
+    # button_labels = get_button_labels(len(player_answer_tuples))
+
+    # player_answer = get_player_id_who_wrote_chosen_answer(
+    #     player_id=player_id, game_id=game_id, question_number=question_number
+    # )
+    # player_has_chosen = player_answer is not None
+
+    # for label, answer_tuple in zip(button_labels, player_answer_tuples, strict=True):
+    #     letter_col, text_col = st.columns([0.2, 0.8], border=True)
+    #     if player_answer == answer_tuple.player_id:
+    #         icon = "✅"
     #     else:
-    #         st.text("False!")
-    #         st.text(f"The correct answer was {button_labels[correct_answer]}.")
+    #         icon = None
 
-    # st.metric(label="Points", value=st.session_state[Var.points])
-    # st.button("Next", on_click=reset_question_state)
+    #     with letter_col:
+    #         st.button(
+    #             label=f"{label}",
+    #             icon=icon,
+    #             disabled=player_has_chosen,
+    #             on_click=partial(
+    #                 set_players_chosen_answers_player_id,
+    #                 game_id=game_id,
+    #                 player_id=player_id,
+    #                 question_number=question_number,
+    #                 chosen_player_id=answer_tuple.player_id,
+    #             ),
+    #         )
+    #     with text_col:
+    #         st.text(answer_tuple.answer_text)
 
 
 def finished_screen(player_id: str, game_id: int, is_host: bool) -> None:
