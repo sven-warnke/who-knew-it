@@ -940,6 +940,10 @@ def guessing_screen(
         with text_col:
             st.text(answer_tuple.answer_text)
 
+    rerun_if_question_is_answered(
+        game_id=game_id, question_number=question_number, is_host=is_host
+    )
+
 
 @dataclasses.dataclass
 class RevealTuple:
