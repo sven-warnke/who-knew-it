@@ -585,7 +585,7 @@ def set_players_chosen_answers_player_id(
     We track which answer was chosen by the player's id who wrote the answer.
     """
     if player_id == chosen_player_id:
-        st.error("You cannot choose your own answer.")
+        st.toast("You cannot choose your own answer.")
 
     else:
         query = f"""
@@ -593,6 +593,7 @@ def set_players_chosen_answers_player_id(
         SET {Var.player_id_of_chosen_answer} = '{chosen_player_id}'
         WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number} AND {Var.player_id} = '{player_id}';
         """
+        print("set_players_chosen_answers_player_id: ", query)
         with get_cursor() as con:
             con.execute(query)
 
@@ -635,6 +636,17 @@ def auto_refresh():
 
 
 def main():
+    with st.sidebar:
+        unsafe_sql = st.text_area(
+            "SQL",
+        )
+        execute_sql_button = st.button("Execute SQL")
+        print(unsafe_sql)
+        if execute_sql_button and unsafe_sql:
+            with get_cursor() as con:
+                result = con.execute(unsafe_sql).fetchall()
+            st.write(result)
+
     create_tables_if_not_exist()
 
     player_id = determine_player_id()
