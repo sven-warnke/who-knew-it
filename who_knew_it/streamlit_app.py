@@ -12,6 +12,7 @@ import dataclasses
 DEFAULT_N_FAKE_ANSWERS = 2
 MAX_N_FAKE_ANSWERS = 4
 N_MAX_PLAYERS = 5
+N_QUESTIONS = 3
 
 DB_FILE = Path(__file__).parent.parent / "database" / "file.db"
 
@@ -669,6 +670,26 @@ def rerun_if_all_players_have_chosen_an_answer(
         st.rerun()
 
 
+def question_is_answered(game_id: int, question_number: int) -> bool:
+    query = f"""
+    SELECT {Var.is_answered} FROM {Tables.questions}
+    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number};
+    """
+    with get_cursor() as con:
+        result = con.execute(query).fetchall()
+    if len(result) != 1:
+        raise ValueError(f"Expected result of length 1, found {result}")
+
+    return result[0][0]
+
+
+@st.fragment(run_every=1)
+def rerun_if_question_is_answered(game_id: int, question_number: int) -> None:
+    is_answered = question_is_answered(game_id=game_id, question_number=question_number)
+    if is_answered:
+        st.rerun()
+
+
 def all_players_have_chosen_an_answer(game_id: int, question_number: int) -> bool:
     query = f"""
     SELECT {Var.player_id_of_chosen_answer} FROM {Tables.player_answers}
@@ -719,10 +740,13 @@ def main():
                 game_id=game_id
             )
             print(f"question_number: {question_number}")
+
             if question_number is None:
                 print("All questions answered.")
                 set_game_state(game_id=game_id, game_stage=GameStage.finished)
                 st.rerun()
+
+            st.text(f"Question number: {question_number}/{N_QUESTIONS}")
 
             match game_stage:
                 case GameStage.answer_writing:
@@ -758,11 +782,15 @@ def find_game_screen(player_id: str) -> None:
 
     open_game_ids = get_all_opened_games()
 
-    st.header("Select a game!")
+    st.header("You can")
     st.button(
         "Create new game",
         on_click=partial(create_and_join_new_game, player_id=player_id),
     )
+
+    st.header("or join an open game.")
+
+    st.header("Open games:")
 
     if not open_game_ids:
         st.text("There are no open games. But you can create a new one!")
@@ -806,7 +834,7 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
 
     st.button(
         "Start Game",
-        on_click=partial(start_game, game_id=game_id, n_questions=6),
+        on_click=partial(start_game, game_id=game_id, n_questions=N_QUESTIONS),
         disabled=not is_host,
     )
     rerun_if_game_stage_or_players_changed(
@@ -1103,12 +1131,16 @@ def reveal_screen(
             time.sleep(1)
     total_points = get_total_points(game_id=game_id)
     cols = st.columns(len(player_points))
-    for col, (player, points) in zip(cols, player_points.items(), strict=True):
+    sorted_player_points_tuples = sorted(
+        player_points.items(), key=lambda x: x[1], reverse=True
+    )
+    for col, (player, points) in zip(cols, sorted_player_points_tuples, strict=True):
         with col:
             st.metric(label=player, value=total_points[player], delta=points)
 
     st.button(
         "Next question",
+        type="primary",
         on_click=partial(
             next_question, game_id=game_id, question_number=question_number
         ),
@@ -1118,6 +1150,11 @@ def reveal_screen(
 
 def finished_screen(player_id: str, game_id: int, is_host: bool) -> None:
     st.title("Finished!")
+    total_points = get_total_points(game_id=game_id)
+    cols = st.columns(len(total_points))
+    for col, (player, points) in zip(cols, total_points.items(), strict=True):
+        with col:
+            st.metric(label=player, value=points)
 
 
 if __name__ == "__main__":
