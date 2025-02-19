@@ -25,6 +25,7 @@ class Tables(enum.StrEnum):
     game_player = "game_player"
     questions = "questions"
     player_answers = "player_answers"
+    points = "points"
 
 
 class Var(enum.StrEnum):
@@ -142,6 +143,17 @@ def create_tables_if_not_exist() -> None:
         );
         """,
         f"""
+        CREATE TABLE IF NOT EXISTS {Tables.points} (
+            {Var.game_id} INT,
+            {Var.question_number} INT,
+            {Var.player_id} VARCHAR(255),
+            {Var.points} INT,
+            PRIMARY KEY ({Var.game_id}, {Var.question_number}, {Var.player_id}),
+            FOREIGN KEY ({Var.game_id}) REFERENCES {Tables.games}({Var.game_id}),
+            FOREIGN KEY ({Var.player_id}) REFERENCES {Tables.players}({Var.player_id}),
+        );
+        """,
+        f"""
         COMMIT;
         """,
     ]
@@ -170,30 +182,14 @@ def get_button_labels(length_of_labels: int) -> list[str]:
     return [get_alphabet_letter(i) for i in range(length_of_labels)]
 
 
-def all_in_state_and_not_none(var_list: list[str]) -> bool:
-    for var in var_list:
-        if not var in st.session_state or st.session_state[var] is None:
-            return False
-    return True
-
-
-def reset_question_state() -> None:
-    for var in [Var.retrieved, Var.answer_list]:
-        st.session_state[var] = None
-
-
-def initialize_points_if_not_exist() -> None:
-    if not all_in_state_and_not_none([Var.points]):
-        st.session_state[Var.points] = 0
-
-
-def increase_points() -> None:
-    initialize_points_if_not_exist()
-    st.session_state[Var.points] += 1
-
-
-def set_is_answered() -> None:
-    st.session_state[Var.is_answered] = True
+def set_is_answered(game_id: int, question_number: int) -> None:
+    query = f"""
+    UPDATE {Tables.questions} SET {Var.is_answered} = TRUE
+    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number};
+    """
+    print("set_is_answered: ", query)
+    with get_cursor() as con:
+        con.execute(query)
 
 
 def initialize_new_game_in_db() -> int:
@@ -296,6 +292,24 @@ def _n_players_in_game_query(game_id: int) -> str:
     return f"""
     SELECT COUNT(*) FROM {Tables.game_player} WHERE {Var.game_id} = {game_id}
     """
+
+
+def add_points(
+    game_id: int, question_number: int, points_per_player_id: dict[str, int]
+) -> None:
+    item_rows = ", ".join(
+        f"({game_id}, {question_number}, '{player_id}', {point})"
+        for player_id, point in points_per_player_id.items()
+    )
+    query = f"""
+    INSERT INTO {Tables.points} ({Var.game_id}, {Var.question_number}, {Var.player_id}, {Var.points}) VALUES
+    {item_rows}
+    ON CONFLICT ({Var.game_id}, {Var.question_number}, {Var.player_id}) 
+    DO UPDATE SET {Var.points} = EXCLUDED.{Var.points};
+    """
+    print("add_points: ", query)
+    with get_cursor() as con:
+        con.execute(query)
 
 
 def join_game(player_id: str, game_id: int, is_host: bool) -> None:
@@ -472,6 +486,11 @@ def determine_whether_all_answers_in(game_id: int, question_number: int) -> bool
     return result[0][0] == 0
 
 
+def next_question(game_id: int, question_number: int) -> None:
+    set_is_answered(game_id=game_id, question_number=question_number)
+    set_game_state(game_id=game_id, game_stage=GameStage.answer_writing)
+
+
 @dataclasses.dataclass
 class PlayerAnswerTuple:
     player_id: str
@@ -635,12 +654,14 @@ def auto_refresh():
 
 
 @st.fragment(run_every=1)
-def rerun_if_question_is_answered(
+def rerun_if_all_players_have_chosen_an_answer(
     game_id: int, question_number: int, is_host: bool
 ) -> None:
-    is_answered = question_is_answered(game_id=game_id, question_number=question_number)
-    print("is_answered: ", is_answered)
-    if is_answered:
+    have_chosen = all_players_have_chosen_an_answer(
+        game_id=game_id, question_number=question_number
+    )
+    print("is_answered: ", have_chosen)
+    if have_chosen:
         if is_host:
             print("Setting game stage to reveal")
             set_game_state(game_id=game_id, game_stage=GameStage.reveal)
@@ -648,7 +669,7 @@ def rerun_if_question_is_answered(
         st.rerun()
 
 
-def question_is_answered(game_id: int, question_number: int) -> bool:
+def all_players_have_chosen_an_answer(game_id: int, question_number: int) -> bool:
     query = f"""
     SELECT {Var.player_id_of_chosen_answer} FROM {Tables.player_answers}
     JOIN {Tables.players} ON {Tables.player_answers}.{Var.player_id} = {Tables.players}.{Var.player_id}
@@ -942,92 +963,157 @@ def guessing_screen(
         with text_col:
             st.text(answer_tuple.answer_text)
 
-    rerun_if_question_is_answered(
+    rerun_if_all_players_have_chosen_an_answer(
         game_id=game_id, question_number=question_number, is_host=is_host
     )
 
 
-@dataclasses.dataclass
-class RevealTuple:
-    player_id: str
-    answer_text: str
-    fooled_players: list[str]
-
-
-def get_reveal_info_from_player_answers(
+def get_players_who_chose_answers(
     game_id: int, question_number: int
-) -> list[RevealTuple]:
+) -> dict[str, list[str]]:
     query = f"""
-    SELECT {Tables.player_answers}.{Var.player_id}, {Tables.player_answers}.{Var.answer_text}, fooled_players_table.{Var.fooled_players}
-    FROM {Tables.player_answers}
-    
-    JOIN
-    (
     SELECT {Var.player_id_of_chosen_answer}, LIST({Var.player_id}) AS {Var.fooled_players} FROM {Tables.player_answers}
-    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number}
+    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number} AND {Var.player_id_of_chosen_answer} IS NOT NULL
     GROUP BY {Var.player_id_of_chosen_answer}
-    ) AS fooled_players_table
-    ON {Tables.player_answers}.{Var.player_id} = fooled_players_table.{Var.player_id_of_chosen_answer}
-    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number};
     """
     print("get_reveal_info_from_player_answers: ", query)
     with get_cursor() as con:
         result = con.execute(query).fetchall()
-    return [RevealTuple(*res) for res in result]
+    print("get_reveal_info_from_player_answers: ", result)
+    return {res[0]: res[1] for res in result}
+
+
+@dataclasses.dataclass
+class RevealInfo:
+    player_id_of_author: str
+    answer_text: str
+    player_ids_who_chose: list[str]
+
+
+def calculate_player_points(reveal_infos: list[RevealInfo]) -> dict[str, int]:
+    points_through_other_people = {
+        ri.player_id_of_author: len(ri.player_ids_who_chose)
+        for ri in reveal_infos
+        if ri.player_id_of_author != CORRECT_ANSWER_ID
+    }
+    [correct_answer_info] = [
+        ri for ri in reveal_infos if ri.player_id_of_author == CORRECT_ANSWER_ID
+    ]
+    for player_id in correct_answer_info.player_ids_who_chose:
+        points_through_other_people[player_id] += 1
+    return points_through_other_people
+
+
+def get_total_points(game_id: int) -> dict[str, int]:
+    query = f"""
+    SELECT {Var.player_id}, SUM({Var.points}) FROM {Tables.points}
+    WHERE {Var.game_id} = {game_id}
+    GROUP BY {Var.player_id};
+    """
+    print("get_total_points: ", query)
+    with get_cursor() as con:
+        result = con.execute(query).fetchall()
+    return {res[0]: res[1] for res in result}
+
+
+def points_entered(game_id: int, question_number: int) -> bool:
+    query = f"""
+    SELECT COUNT(*) FROM {Tables.points}
+    WHERE {Var.game_id} = {game_id} AND {Var.question_number} = {question_number};
+    """
+    print("points_entered: ", query)
+    with get_cursor() as con:
+        result = con.execute(query).fetchall()
+    return result[0][0] > 0
 
 
 def reveal_screen(
     player_id: str, game_id: int, is_host: bool, question_number: int
 ) -> None:
-    reveal_info = get_reveal_info_from_player_answers(
+    players_who_chose_answers = get_players_who_chose_answers(
         game_id=game_id, question_number=question_number
     )
-    st.write(reveal_info)
-    # question = get_question(game_id=game_id, question_number=question_number)
 
-    # if question is None:
-    #     raise ValueError(
-    #         "Question is None. This should not have happened. Something is wrong."
-    #     )
-    # player_answer_tuples = get_player_answer_tuples(
-    #     game_id=game_id, question_number=question_number
-    # )
-    # combined_synopsis = get_correct_answer(
-    #     game_id=game_id, question_number=question_number
-    # )
-    # correct_answer_rank = get_correct_answer_rank(
-    #     game_id=game_id, question_number=question_number
-    # )
+    question = get_question(game_id=game_id, question_number=question_number)
 
-    # button_labels = get_button_labels(len(player_answer_tuples))
+    if question is None:
+        raise ValueError(
+            "Question is None. This should not have happened. Something is wrong."
+        )
+    st.title(f"Reveal for question {question_number}")
+    st.text(f"What's the correct answer for question {question}?")
 
-    # player_answer = get_player_id_who_wrote_chosen_answer(
-    #     player_id=player_id, game_id=game_id, question_number=question_number
-    # )
-    # player_has_chosen = player_answer is not None
+    player_answer_tuples = get_player_answer_tuples(
+        game_id=game_id, question_number=question_number
+    )
+    correct_answer = get_correct_answer(
+        game_id=game_id, question_number=question_number
+    )
+    if correct_answer is None:
+        raise ValueError(
+            "Correct answer is None. This should not have happened. Something is wrong."
+        )
+    reveal_infos = [
+        RevealInfo(
+            player_id_of_author=answer_tuple.player_id,
+            answer_text=answer_tuple.answer_text,
+            player_ids_who_chose=players_who_chose_answers.get(
+                answer_tuple.player_id, []
+            ),
+        )
+        for answer_tuple in player_answer_tuples
+    ]
+    reveal_infos = sorted(reveal_infos, key=lambda x: len(x.player_ids_who_chose))
 
-    # for label, answer_tuple in zip(button_labels, player_answer_tuples, strict=True):
-    #     letter_col, text_col = st.columns([0.2, 0.8], border=True)
-    #     if player_answer == answer_tuple.player_id:
-    #         icon = "✅"
-    #     else:
-    #         icon = None
+    reveal_infos += [
+        RevealInfo(
+            player_id_of_author=CORRECT_ANSWER_ID,
+            answer_text=correct_answer,
+            player_ids_who_chose=players_who_chose_answers.get(CORRECT_ANSWER_ID, []),
+        )
+    ]
 
-    #     with letter_col:
-    #         st.button(
-    #             label=f"{label}",
-    #             icon=icon,
-    #             disabled=player_has_chosen,
-    #             on_click=partial(
-    #                 set_players_chosen_answers_player_id,
-    #                 game_id=game_id,
-    #                 player_id=player_id,
-    #                 question_number=question_number,
-    #                 chosen_player_id=answer_tuple.player_id,
-    #             ),
-    #         )
-    #     with text_col:
-    #         st.text(answer_tuple.answer_text)
+    answer_col, written_by_col, guessed_by_col = st.columns(3, border=True)
+    with answer_col:
+        st.header("Answer")
+    with written_by_col:
+        st.header("Written by")
+    with guessed_by_col:
+        st.header("Guessed by")
+    for r_info in reveal_infos:
+        answer_col, written_by_col, guessed_by_col = st.columns(3, border=True)
+        with answer_col:
+            st.text(r_info.answer_text)
+        with written_by_col:
+            st.text(r_info.player_id_of_author)
+        with guessed_by_col:
+            fooled_players = r_info.player_ids_who_chose
+            for player in fooled_players:
+                st.text(player)
+
+    player_points = calculate_player_points(reveal_infos=reveal_infos)
+    if is_host:
+        add_points(
+            game_id=game_id,
+            question_number=question_number,
+            points_per_player_id=player_points,
+        )
+    else:
+        while not points_entered(game_id=game_id, question_number=question_number):
+            time.sleep(1)
+    total_points = get_total_points(game_id=game_id)
+    cols = st.columns(len(player_points))
+    for col, (player, points) in zip(cols, player_points.items(), strict=True):
+        with col:
+            st.metric(label=player, value=total_points[player], delta=points)
+
+    st.button(
+        "Next question",
+        on_click=partial(
+            next_question, game_id=game_id, question_number=question_number
+        ),
+        disabled=not is_host,
+    )
 
 
 def finished_screen(player_id: str, game_id: int, is_host: bool) -> None:
