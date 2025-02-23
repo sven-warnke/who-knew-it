@@ -393,13 +393,22 @@ def join_game(player_id: str, game_id: int, is_host: bool) -> None:
         print(f"{player_id} joined game {game_id}.")
 
 
-def leave_game(player_id: str, game_id: int) -> None:
+def remove_from_game(player_id: str, game_id: int) -> None:
     query = f"""
     DELETE FROM {Tables.game_player} WHERE {Var.player_id} = '{player_id}' AND {Var.game_id} = {game_id};
     """
-    print("leave_game: ", query)
+    print("remove_from_game: ", query)
     with get_cursor() as con:
         con.execute(query)
+
+
+def kick_from_game(player_id: str, game_id: int) -> None:
+    remove_from_game(player_id=player_id, game_id=game_id)
+    st.info(f"{player_id} was kicked from game {game_id}.")
+
+
+def leave_game(player_id: str, game_id: int) -> None:
+    remove_from_game(player_id=player_id, game_id=game_id)
     st.session_state[Var.game_id] = None
 
 
@@ -686,6 +695,13 @@ def set_players_chosen_answers_player_id(
 
 
 @st.fragment(run_every=1)
+def rerun_if_game_stage_changed(game_id: int, current_stage: GameStage) -> None:
+    actual_stage = determine_game_stage(game_id)
+    if actual_stage != current_stage:
+        st.rerun()
+
+
+@st.fragment(run_every=1)
 def rerun_if_game_stage_changed_or_all_answers_in(
     game_id: int,
     current_stage: GameStage,
@@ -717,9 +733,14 @@ def rerun_if_game_stage_or_players_changed(
         st.rerun()
 
 
-@st.fragment(run_every=30)
-def auto_refresh():
-    st.rerun()
+@st.fragment(run_every=1)
+def auto_refresh(count_down: list[int] = [10]) -> None:
+    if count_down[0] <= 0:
+        print("Auto-refreshing...")
+        st.rerun()
+    else:
+        count_down[0] -= 1
+        st.caption(f"Auto-refresh in {count_down[0]} seconds.")
 
 
 @st.fragment(run_every=1)
@@ -790,6 +811,13 @@ def player_name_display(player_id: str) -> None:
     st.write(f"Your name is: {player_name}")
 
 
+def leave_if_not_in_game(player_id: str, game_id: int, all_players: list[str]) -> None:
+    if player_id not in all_players:
+        leave_game(player_id=player_id, game_id=game_id)
+        st.info("You were removed from the game.")
+        st.rerun()
+
+
 def main():
     with st.sidebar:
         unsafe_sql = st.text_area(
@@ -806,6 +834,12 @@ def main():
 
     player_id = determine_player_id()
     game_id = determine_game_id()
+    if game_id is not None:
+        leave_if_not_in_game(
+            player_id=player_id,
+            game_id=game_id,
+            all_players=get_all_players_in_game(game_id=game_id),
+        )
 
     game_stage = determine_game_stage(game_id)
 
@@ -904,7 +938,7 @@ def find_game_screen(player_id: str) -> None:
 
     st.divider()
     st.button("Refresh")
-    # auto_refresh()  # Seems to cause reruns between screens
+    auto_refresh()
 
 
 def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
@@ -914,10 +948,11 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
     st.text(f"You are {'not ' if not is_host else ''} the host.")
     st.header("Players:")
     all_players = get_all_players_in_game(game_id=game_id)
-    if not player_id in all_players:
-        st.error(
-            "Seems like you are not in the game. How do you see it then? This should not have happened."
-        )
+    leave_if_not_in_game(
+        player_id=player_id,
+        game_id=game_id,
+        all_players=list(all_players.keys()),
+    )
     print(all_players)
 
     for p_id, p_name in all_players.items():
@@ -928,7 +963,7 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
             with cols[1]:
                 st.button(
                     "Kick",
-                    on_click=partial(leave_game, game_id=game_id, player_id=p_id),
+                    on_click=partial(kick_from_game, game_id=game_id, player_id=p_id),
                 )
 
     cols = st.columns(3)
@@ -1239,7 +1274,7 @@ def reveal_screen(
     player_id_to_name = get_all_players_in_game(game_id=game_id)
     player_id_to_name[CORRECT_ANSWER_ID] = CORRECT_ANSWER_NAME
 
-    answer_col, written_by_col, guessed_by_col = st.columns(3, border=True)
+    answer_col, written_by_col, guessed_by_col = st.columns(3)
     with answer_col:
         st.header("Answer")
     with written_by_col:
@@ -1247,7 +1282,7 @@ def reveal_screen(
     with guessed_by_col:
         st.header("Guessed by")
     for r_info in reveal_infos:
-        answer_col, written_by_col, guessed_by_col = st.columns(3, border=True)
+        answer_col, written_by_col, guessed_by_col = st.columns(3)
         with answer_col:
             if len(r_info.answer_text) <= DISPLAY_LENGTH_LIMIT_TO_EXPANDER:
                 st.text(r_info.answer_text)
@@ -1298,6 +1333,7 @@ def reveal_screen(
         ),
         disabled=not is_host,
     )
+    rerun_if_game_stage_changed(game_id=game_id, current_stage=GameStage.reveal)
 
 
 def abbreviate_text(text: str, width: int) -> str:
@@ -1311,16 +1347,15 @@ def abbreviate_text(text: str, width: int) -> str:
     return wrapped_chunks[0]
 
 
-def get_placing(player_id: str, total_points: dict[str, int]) -> tuple[int, bool]:
-    self_points = total_points[player_id]
-    number = sum(1 for v in total_points.values() if v > self_points) + 1
-    equal_with_someone = sum(1 for v in total_points.values() if v == self_points) > 1
-    return number, equal_with_someone
+def get_winner_s(total_points: dict[str, int]) -> list[str]:
+    max_points = max(total_points.values())
+    return [player for player, points in total_points.items() if points == max_points]
 
 
 def finished_screen(player_id: str, game_id: int, is_host: bool) -> None:
     st.title("Finished!")
-    total_points = get_total_points(game_id=game_id)
+    player_id_to_name = get_all_players_in_game(game_id=game_id)
+    total_points = aggregate_house_points(get_total_points(game_id=game_id))
     cols = st.columns(len(total_points))
     sorted_player_points_tuples = sorted(
         total_points.items(), key=lambda x: x[1], reverse=True
@@ -1328,20 +1363,29 @@ def finished_screen(player_id: str, game_id: int, is_host: bool) -> None:
 
     for col, (player, points) in zip(cols, sorted_player_points_tuples, strict=True):
         with col:
-            st.metric(label=player, value=points)
+            st.metric(label=player_id_to_name[player], value=points)
     player_name = get_player_name(player_id=player_id)
-    place, tied = get_placing(player_id=player_id, total_points=total_points)
-    st.header(f"Congratulations {player_name}!")
-    st.header(
-        f"You are {'equal' if tied else ''} {place}{'st' if place == 1 else 'nd' if place == 2 else 'rd' if place == 3 else 'th'}"
-    )
-    if place == 1:
+    winners = get_winner_s(total_points=total_points)
+
+    if player_id in winners:
         st.balloons()
+        qualifier = (
+            f" together with {' '.join(player_id_to_name[w] for w in winners)}"
+            if len(winners) > 1
+            else ""
+        )
+
+        st.header(f"Congratulations {player_name}! You won the game{qualifier}!")
+    else:
+        verb = "has" if len(winners) == 1 else "have"
+        st.header(
+            f"{' '.join(player_id_to_name[w] for w in winners)} {verb} won the game."
+        )
 
     st.button(
         "Next game",
         type="primary",
-        on_click=partial(leave_game, player_id=player_id),
+        on_click=partial(leave_game, game_id=game_id, player_id=player_id),
     )
 
 
