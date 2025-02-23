@@ -3,6 +3,7 @@ import streamlit as st
 import enum
 from who_knew_it import fake_answer
 from who_knew_it import movie_suggestion
+from who_knew_it import name_generation
 import duckdb
 import uuid
 from pathlib import Path
@@ -13,6 +14,8 @@ DEFAULT_N_FAKE_ANSWERS = 2
 MAX_N_FAKE_ANSWERS = 4
 N_MAX_PLAYERS = 5
 N_QUESTIONS = 3
+MAX_NAME_LENGTH = 20
+
 
 DB_FILE = Path(__file__).parent.parent / "database" / "file.db"
 
@@ -268,20 +271,62 @@ def generate_player_id() -> str:
     return str(uuid.uuid4()).replace("-", "")
 
 
-def register_player_id(player_id: str) -> None:
+def register_player_id_and_name(player_id: str, player_name: str) -> None:
     query = f"""
-            INSERT INTO {Tables.players} ({Var.player_id}, {Var.player_name}) VALUES ('{player_id}', '{player_id}');
+            INSERT INTO {Tables.players} ({Var.player_id}, {Var.player_name}) VALUES ('{player_id}', '{player_name}');
             """
     with get_cursor() as con:
         con.execute(query)
-        st.session_state[Var.player_id] = player_id
+    st.session_state[Var.player_id] = player_id
+
+
+def set_player_name(player_id: str, player_name: str) -> None:
+    if not player_name:
+        st.error("Player name cannot be empty.")
+        return
+
+    if player_name == "empty":
+        st.error("Player name cannot be empty.")
+        return
+
+    _set_player_name(player_id=player_id, player_name=player_name)
+    st.success("Player name changed.")
+
+
+def _set_player_name(player_id: str, player_name: str) -> None:
+    if not player_name:
+        raise ValueError("Player name cannot be empty.")
+
+    query = f"""
+    UPDATE {Tables.players} SET {Var.player_name} = '{player_name}'
+    WHERE {Var.player_id} = '{player_id}';
+    """
+
+    print("set_player_name: ", query)
+    with get_cursor() as con:
+        con.execute(query)
+
+
+def get_player_name(player_id: str) -> str:
+    query = f"""
+    SELECT {Var.player_name} FROM {Tables.players} WHERE {Var.player_id} = '{player_id}'
+    """
+    print("get_player_name: ", query)
+    with get_cursor() as con:
+        result = con.execute(query).fetchall()
+
+    if len(result) != 1:
+        raise ValueError(f"Expected result of length 1, found {result}")
+
+    return result[0][0]
 
 
 def determine_player_id() -> str:
     player_id = st.session_state.get(Var.player_id, None)
     if not player_id:
         player_id = generate_player_id()
-        register_player_id(player_id=player_id)
+        player_name = name_generation.generate_player_name()
+        register_player_id_and_name(player_id=player_id, player_name=player_name)
     return player_id
 
 
@@ -704,6 +749,19 @@ def all_players_have_chosen_an_answer(game_id: int, question_number: int) -> boo
     return not any(res[0] is None for res in result)
 
 
+def change_name_field(player_id: str, player_name: str) -> None:
+    st.text_input(
+        label="Your name",
+        value=player_name,
+        max_chars=MAX_NAME_LENGTH,
+        help="Choose how other players see you.",
+        key=Var.player_name,
+        on_change=lambda: set_player_name(
+            player_id=player_id, player_name=st.session_state[Var.player_name]
+        ),
+    )
+
+
 def main():
     with st.sidebar:
         unsafe_sql = st.text_area(
@@ -777,9 +835,9 @@ def main():
 
 
 def find_game_screen(player_id: str) -> None:
+    player_name = get_player_name(player_id=player_id)
     st.title("Welcome to 'Who knew it?' with Chat Stewart")
-    st.text(f"Hello {player_id}")
-
+    change_name_field(player_id=player_id, player_name=player_name)
     open_game_ids = get_all_opened_games()
 
     st.header("You can")
@@ -818,9 +876,10 @@ def find_game_screen(player_id: str) -> None:
 
 
 def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
-    st.title(f"This is your game. {game_id}")
+    player_name = get_player_name(player_id=player_id)
+    st.title(f"You have joined game {game_id}")
+    change_name_field(player_id=player_id, player_name=player_name)
     st.text(f"You are {'not ' if not is_host else ''} the host.")
-    st.text(f"Hello {player_id}")
     st.header("Players:")
     all_players = get_all_players_in_game(game_id=game_id)
     if not player_id in all_players:
@@ -830,7 +889,7 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
     print(all_players)
 
     for player in all_players:
-        st.text(player)
+        st.text(get_player_name(player_id=player))
 
     st.button(
         "Start Game",
@@ -845,6 +904,7 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
 def answer_writing_screen(
     player_id: str, game_id: int, is_host: bool, question_number: int
 ) -> None:
+    player_name = get_player_name(player_id=player_id)
     question = get_question(game_id=game_id, question_number=question_number)
 
     if question is None:
