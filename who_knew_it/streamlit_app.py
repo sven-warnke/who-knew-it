@@ -1,4 +1,5 @@
 import time
+import textwrap
 import streamlit as st
 import enum
 from who_knew_it import fake_answer
@@ -15,12 +16,14 @@ MAX_N_FAKE_ANSWERS = 4
 N_MAX_PLAYERS = 5
 N_QUESTIONS = 3
 MAX_NAME_LENGTH = 20
-
+DISPLAY_LENGTH_LIMIT_TO_EXPANDER = 30
 
 DB_FILE = Path(__file__).parent.parent / "database" / "file.db"
 
 HOUSE_PLAYER_ID_PREFIX = "house"
 CORRECT_ANSWER_ID = "correct_answer"
+HOUSE_NAME = "The House"
+CORRECT_ANSWER_NAME = "Correct Answer"
 
 
 class Tables(enum.StrEnum):
@@ -103,12 +106,12 @@ def create_tables_if_not_exist() -> None:
         f"""
                 INSERT INTO {Tables.players} ({Var.player_id}, {Var.player_name}, {Var.is_house}) 
                 VALUES 
-                ('{get_house_player_id(0)}', '{get_house_player_id(0)}', TRUE),
-                ('{get_house_player_id(1)}', '{get_house_player_id(1)}', TRUE),
-                ('{get_house_player_id(2)}', '{get_house_player_id(2)}', TRUE),
-                ('{get_house_player_id(3)}', '{get_house_player_id(3)}', TRUE),
-                ('{get_house_player_id(4)}', '{get_house_player_id(4)}', TRUE),
-                ('{get_house_player_id(5)}', '{get_house_player_id(5)}', TRUE)
+                ('{get_house_player_id(0)}', '{HOUSE_NAME}', TRUE),
+                ('{get_house_player_id(1)}', '{HOUSE_NAME}', TRUE),
+                ('{get_house_player_id(2)}', '{HOUSE_NAME}', TRUE),
+                ('{get_house_player_id(3)}', '{HOUSE_NAME}', TRUE),
+                ('{get_house_player_id(4)}', '{HOUSE_NAME}', TRUE),
+                ('{get_house_player_id(5)}', '{HOUSE_NAME}', TRUE)
                 ;
         """,
         f"""
@@ -221,9 +224,11 @@ def get_all_opened_games() -> list[int]:
 
 def get_all_players_in_game(game_id: int) -> dict[str, str]:
     query = f"""
-    SELECT {Var.player_id}, {Var.player_name} FROM {Tables.game_player}
-    WHERE {Var.game_id} = {game_id};
+    SELECT {Tables.players}.{Var.player_id}, {Tables.players}.{Var.player_name} FROM {Tables.game_player}
+    JOIN {Tables.players} ON  {Tables.players}.{Var.player_id} = {Tables.game_player}.{Var.player_id}
+    WHERE {Tables.game_player}.{Var.game_id} = {game_id};
     """
+    print("get_all_players_in_game: ", query)
     with get_cursor() as con:
         result = con.execute(query).fetchall()
 
@@ -287,6 +292,14 @@ def set_player_name(player_id: str, player_name: str) -> None:
 
     if player_name == "empty":
         st.error("Player name cannot be empty.")
+        return
+
+    if player_name.lower() == HOUSE_NAME.lower():
+        st.error(f"Player name cannot be '{HOUSE_NAME}'.")
+        return
+
+    if player_name.lower() == CORRECT_ANSWER_NAME.lower():
+        st.error(f"Player name cannot be '{CORRECT_ANSWER_NAME}'.")
         return
 
     _set_player_name(player_id=player_id, player_name=player_name)
@@ -378,6 +391,16 @@ def join_game(player_id: str, game_id: int, is_host: bool) -> None:
     if joined_succesfully:
         st.session_state[Var.game_id] = game_id
         print(f"{player_id} joined game {game_id}.")
+
+
+def leave_game(player_id: str, game_id: int) -> None:
+    query = f"""
+    DELETE FROM {Tables.game_player} WHERE {Var.player_id} = '{player_id}' AND {Var.game_id} = {game_id};
+    """
+    print("leave_game: ", query)
+    with get_cursor() as con:
+        con.execute(query)
+    st.session_state[Var.game_id] = None
 
 
 def is_player_host(player_id: str, game_id: int) -> bool:
@@ -849,9 +872,12 @@ def find_game_screen(player_id: str) -> None:
     st.button(
         "Create new game",
         on_click=partial(create_and_join_new_game, player_id=player_id),
+        type="primary",
     )
 
     st.header("or join an open game.")
+
+    st.divider()
 
     st.header("Open games:")
 
@@ -876,6 +902,7 @@ def find_game_screen(player_id: str) -> None:
                 color = "green" if len(all_players_in_game) < N_MAX_PLAYERS else "red"
                 st.markdown(f":{color}[{len(all_players_in_game)}/{N_MAX_PLAYERS}]")
 
+    st.divider()
     st.button("Refresh")
     # auto_refresh()  # Seems to cause reruns between screens
 
@@ -893,14 +920,30 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
         )
     print(all_players)
 
-    for player_name in all_players.values():
-        st.text(player_name)
+    for p_id, p_name in all_players.items():
+        cols = st.columns(2)
+        with cols[0]:
+            st.text(p_name)
+        if is_host and p_id != player_id:
+            with cols[1]:
+                st.button(
+                    "Kick",
+                    on_click=partial(leave_game, game_id=game_id, player_id=p_id),
+                )
 
-    st.button(
-        "Start Game",
-        on_click=partial(start_game, game_id=game_id, n_questions=N_QUESTIONS),
-        disabled=not is_host,
-    )
+    cols = st.columns(3)
+    with cols[0]:
+        st.button(
+            "Leave Game",
+            on_click=partial(leave_game, game_id=game_id, player_id=player_id),
+        )
+    with cols[2]:
+        st.button(
+            "Start Game",
+            on_click=partial(start_game, game_id=game_id, n_questions=N_QUESTIONS),
+            disabled=not is_host,
+            type="primary",
+        )
     rerun_if_game_stage_or_players_changed(
         game_id=game_id,
         current_players=list(all_players.keys()),
@@ -953,9 +996,11 @@ def answer_writing_screen(
     )
 
     st.button(
-        "Next",
+        "Finish writing answers",
         on_click=lambda: set_game_state(game_id=game_id, game_stage=GameStage.guessing),
         disabled=not all_answers_in or not is_host,
+        type="primary",
+        help="Only the host can finish writing answers if all answers are in.",
     )
     rerun_if_game_stage_changed_or_all_answers_in(
         game_id=game_id,
@@ -1086,6 +1131,27 @@ class RevealInfo:
     player_ids_who_chose: list[str]
 
 
+def aggregate_house_points(player_points: dict[str, int]) -> dict[str, int]:
+    player_points = player_points.copy()
+    house_ids = [
+        player_id
+        for player_id in player_points.keys()
+        if player_id.startswith(HOUSE_PLAYER_ID_PREFIX)
+    ]
+    if not house_ids:
+        return player_points
+
+    if not get_house_player_id(0) in player_points:
+        raise ValueError("House player 0 is not in player_points")
+
+    house_sum = sum(player_points[h_id] for h_id in house_ids)
+    for h_id in house_ids:
+        del player_points[h_id]
+
+    player_points[get_house_player_id(0)] = house_sum
+    return player_points
+
+
 def calculate_player_points(reveal_infos: list[RevealInfo]) -> dict[str, int]:
     points_through_other_people = {
         ri.player_id_of_author: len(ri.player_ids_who_chose)
@@ -1171,6 +1237,7 @@ def reveal_screen(
         )
     ]
     player_id_to_name = get_all_players_in_game(game_id=game_id)
+    player_id_to_name[CORRECT_ANSWER_ID] = CORRECT_ANSWER_NAME
 
     answer_col, written_by_col, guessed_by_col = st.columns(3, border=True)
     with answer_col:
@@ -1182,7 +1249,14 @@ def reveal_screen(
     for r_info in reveal_infos:
         answer_col, written_by_col, guessed_by_col = st.columns(3, border=True)
         with answer_col:
-            st.text(r_info.answer_text)
+            if len(r_info.answer_text) <= DISPLAY_LENGTH_LIMIT_TO_EXPANDER:
+                st.text(r_info.answer_text)
+            else:
+                expander_visible = abbreviate_text(
+                    r_info.answer_text, DISPLAY_LENGTH_LIMIT_TO_EXPANDER
+                )
+                with st.expander(label=expander_visible):
+                    st.text(r_info.answer_text)
         with written_by_col:
             st.text(player_id_to_name[r_info.player_id_of_author])
         with guessed_by_col:
@@ -1201,6 +1275,9 @@ def reveal_screen(
         while not points_entered(game_id=game_id, question_number=question_number):
             time.sleep(1)
     total_points = get_total_points(game_id=game_id)
+    player_points = aggregate_house_points(player_points=player_points)
+    total_points = aggregate_house_points(player_points=total_points)
+
     cols = st.columns(len(player_points))
     sorted_player_points_tuples = sorted(
         player_points.items(), key=lambda x: x[1], reverse=True
@@ -1221,6 +1298,17 @@ def reveal_screen(
         ),
         disabled=not is_host,
     )
+
+
+def abbreviate_text(text: str, width: int) -> str:
+    wrapped_chunks = textwrap.wrap(
+        text,
+        width=width,
+        expand_tabs=False,
+        replace_whitespace=False,
+        drop_whitespace=False,
+    )
+    return wrapped_chunks[0]
 
 
 def get_placing(player_id: str, total_points: dict[str, int]) -> tuple[int, bool]:
@@ -1250,12 +1338,11 @@ def finished_screen(player_id: str, game_id: int, is_host: bool) -> None:
     if place == 1:
         st.balloons()
 
-    if is_host:
-        st.button(
-            "Next game",
-            type="primary",
-            on_click=partial(create_and_join_new_game, player_id=player_id),
-        )
+    st.button(
+        "Next game",
+        type="primary",
+        on_click=partial(leave_game, player_id=player_id),
+    )
 
 
 if __name__ == "__main__":
