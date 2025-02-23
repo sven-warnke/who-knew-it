@@ -157,7 +157,7 @@ def create_tables_if_not_exist() -> None:
             FOREIGN KEY ({Var.player_id}) REFERENCES {Tables.players}({Var.player_id}),
         );
         """,
-        f"""
+        """
         COMMIT;
         """,
     ]
@@ -219,15 +219,15 @@ def get_all_opened_games() -> list[int]:
     return [res[0] for res in result]
 
 
-def get_all_players_in_game(game_id: int) -> list[str]:
+def get_all_players_in_game(game_id: int) -> dict[str, str]:
     query = f"""
-    SELECT {Var.player_id} FROM {Tables.game_player}
+    SELECT {Var.player_id}, {Var.player_name} FROM {Tables.game_player}
     WHERE {Var.game_id} = {game_id};
     """
     with get_cursor() as con:
         result = con.execute(query).fetchall()
 
-    return [res[0] for res in result]
+    return {res[0]: res[1] for res in result}
 
 
 def create_and_join_new_game(player_id: str) -> None:
@@ -762,6 +762,11 @@ def change_name_field(player_id: str, player_name: str) -> None:
     )
 
 
+def player_name_display(player_id: str) -> None:
+    player_name = get_player_name(player_id=player_id)
+    st.write(f"Your name is: {player_name}")
+
+
 def main():
     with st.sidebar:
         unsafe_sql = st.text_area(
@@ -865,7 +870,7 @@ def find_game_screen(player_id: str) -> None:
                     disabled=len(all_players_in_game) >= N_MAX_PLAYERS,
                 )
             with col_players:
-                for player in all_players_in_game:
+                for player in all_players_in_game.values():
                     st.text(player)
             with col_how_many_free:
                 color = "green" if len(all_players_in_game) < N_MAX_PLAYERS else "red"
@@ -888,8 +893,8 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
         )
     print(all_players)
 
-    for player in all_players:
-        st.text(get_player_name(player_id=player))
+    for player_name in all_players.values():
+        st.text(player_name)
 
     st.button(
         "Start Game",
@@ -897,14 +902,15 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
         disabled=not is_host,
     )
     rerun_if_game_stage_or_players_changed(
-        game_id=game_id, current_players=all_players, current_stage=GameStage.game_open
+        game_id=game_id,
+        current_players=list(all_players.keys()),
+        current_stage=GameStage.game_open,
     )
 
 
 def answer_writing_screen(
     player_id: str, game_id: int, is_host: bool, question_number: int
 ) -> None:
-    player_name = get_player_name(player_id=player_id)
     question = get_question(game_id=game_id, question_number=question_number)
 
     if question is None:
@@ -929,6 +935,7 @@ def answer_writing_screen(
                         game_id=game_id, question_number=question_number
                     )
 
+    player_name_display(player_id=player_id)
     st.title(question)
     st.text_area(
         label="Your answer:",
@@ -967,6 +974,7 @@ def guessing_screen(
         raise ValueError(
             "Question is None. This should not have happened. Something is wrong."
         )
+    player_name_display(player_id=player_id)
     st.title(question)
     st.header("Here are your options. Which one do you think is correct?")
 
@@ -1118,6 +1126,8 @@ def points_entered(game_id: int, question_number: int) -> bool:
 def reveal_screen(
     player_id: str, game_id: int, is_host: bool, question_number: int
 ) -> None:
+    player_name_display(player_id=player_id)
+
     players_who_chose_answers = get_players_who_chose_answers(
         game_id=game_id, question_number=question_number
     )
@@ -1160,6 +1170,7 @@ def reveal_screen(
             player_ids_who_chose=players_who_chose_answers.get(CORRECT_ANSWER_ID, []),
         )
     ]
+    player_id_to_name = get_all_players_in_game(game_id=game_id)
 
     answer_col, written_by_col, guessed_by_col = st.columns(3, border=True)
     with answer_col:
@@ -1173,11 +1184,11 @@ def reveal_screen(
         with answer_col:
             st.text(r_info.answer_text)
         with written_by_col:
-            st.text(r_info.player_id_of_author)
+            st.text(player_id_to_name[r_info.player_id_of_author])
         with guessed_by_col:
             fooled_players = r_info.player_ids_who_chose
             for player in fooled_players:
-                st.text(player)
+                st.text(player_id_to_name[player])
 
     player_points = calculate_player_points(reveal_infos=reveal_infos)
     if is_host:
@@ -1196,7 +1207,11 @@ def reveal_screen(
     )
     for col, (player, points) in zip(cols, sorted_player_points_tuples, strict=True):
         with col:
-            st.metric(label=player, value=total_points[player], delta=points)
+            st.metric(
+                label=player_id_to_name[player],
+                value=total_points[player],
+                delta=points,
+            )
 
     st.button(
         "Next question",
@@ -1208,13 +1223,39 @@ def reveal_screen(
     )
 
 
+def get_placing(player_id: str, total_points: dict[str, int]) -> tuple[int, bool]:
+    self_points = total_points[player_id]
+    number = sum(1 for v in total_points.values() if v > self_points) + 1
+    equal_with_someone = sum(1 for v in total_points.values() if v == self_points) > 1
+    return number, equal_with_someone
+
+
 def finished_screen(player_id: str, game_id: int, is_host: bool) -> None:
     st.title("Finished!")
     total_points = get_total_points(game_id=game_id)
     cols = st.columns(len(total_points))
-    for col, (player, points) in zip(cols, total_points.items(), strict=True):
+    sorted_player_points_tuples = sorted(
+        total_points.items(), key=lambda x: x[1], reverse=True
+    )
+
+    for col, (player, points) in zip(cols, sorted_player_points_tuples, strict=True):
         with col:
             st.metric(label=player, value=points)
+    player_name = get_player_name(player_id=player_id)
+    place, tied = get_placing(player_id=player_id, total_points=total_points)
+    st.header(f"Congratulations {player_name}!")
+    st.header(
+        f"You are {'equal' if tied else ''} {place}{'st' if place == 1 else 'nd' if place == 2 else 'rd' if place == 3 else 'th'}"
+    )
+    if place == 1:
+        st.balloons()
+
+    if is_host:
+        st.button(
+            "Next game",
+            type="primary",
+            on_click=partial(create_and_join_new_game, player_id=player_id),
+        )
 
 
 if __name__ == "__main__":
