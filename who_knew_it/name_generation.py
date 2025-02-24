@@ -1,7 +1,6 @@
 import pathlib
 import random
 
-
 NAME_FILES_DIR = pathlib.Path(__file__).parent / "name-generation"
 
 

@@ -1,15 +1,15 @@
-import time
-import textwrap
-import streamlit as st
-import enum
-from who_knew_it import fake_answer
-from who_knew_it import movie_suggestion
-from who_knew_it import name_generation
-import duckdb
-import uuid
-from pathlib import Path
-from functools import partial
 import dataclasses
+import enum
+import textwrap
+import time
+import uuid
+from functools import partial
+from pathlib import Path
+
+import duckdb
+import streamlit as st
+
+from who_knew_it import movie_suggestion, name_generation
 
 DEFAULT_N_FAKE_ANSWERS = 2
 MAX_N_FAKE_ANSWERS = 4
@@ -1078,7 +1078,7 @@ def guessing_screen(
             if is_host:
                 fake_answers = []
                 for _ in range(n_fake_answers):
-                    fake_answer_text = fake_answer.create_fake_movie_synopsis(
+                    fake_answer_text = movie_suggestion.create_fake_movie_synopsis(
                         info_about_film=retrieved_title,
                         avoid_examples=[combined_synopsis],
                     )

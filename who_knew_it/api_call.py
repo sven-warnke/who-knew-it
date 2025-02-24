@@ -1,5 +1,6 @@
-import requests
 from pathlib import Path
+
+import requests
 
 
 def prompt_model(prompt: str) -> str:
