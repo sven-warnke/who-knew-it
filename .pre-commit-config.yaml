@@ -3,7 +3,9 @@ repos:
     hooks:
       - id: ruff
         name: ruff
-        entry: ruff format .
+        entry: |
+          ruff check --select I --fix
+          ruff format .
         language: system
         types: [python]
 
