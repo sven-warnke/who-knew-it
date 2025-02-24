@@ -995,16 +995,15 @@ def answer_writing_screen(
         with st.spinner("Generating Question..."):
             if is_host:
                 print("Generating Question since I am host")
-                retrieved_title, combined_synopsis = (
-                    movie_suggestion.select_film_and_generate_synopsis()
+                question_object = (
+                    movie_suggestion.MovieQuestionGenerator().generate_question_and_correct_answer()
                 )
                 add_question_and_correct_answer(
                     game_id=game_id,
                     question_number=question_number,
-                    question=retrieved_title,
-                    correct_answer=combined_synopsis,
+                    question=question_object.question_text(),
+                    correct_answer=question_object.correct_answer,
                 )
-                question = retrieved_title
             else:
                 print("Waiting for host to generate question")
                 while question is None:
