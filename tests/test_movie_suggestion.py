@@ -4,8 +4,6 @@ import time
 
 import imdb  # type: ignore
 
-from who_knew_it import movie_suggestion
-
 
 def test_get_year():
     ia = imdb.Cinemagoer()
