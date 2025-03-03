@@ -1,10 +1,9 @@
 import dataclasses
-import random
 from pathlib import Path
 
 import imdb  # type: ignore
 
-from who_knew_it import api_call, questions
+from who_knew_it import api_call, questions, random_word
 
 PROMPT_FOLDER_PATH = Path(__file__).parent / "prompts"
 
@@ -53,23 +52,17 @@ def _combine_synopsises(film_name, synopsis_list: list[str]) -> str:
     return api_call.prompt_model(prompt=prompt)
 
 
-def get_random_word():
-    word_file = Path(__file__).parent.parent / "who_knew_it" / "words.txt"
 
-    with open(word_file) as f:
-        words = f.read().splitlines()
-
-    return random.choice(words)
 
 
 def random_unknown_movie() -> imdb.Movie:
     ia = imdb.Cinemagoer()
 
     while True:
-        random_word = get_random_word()
-        print("random word: ", random_word)
+        word = random_word.get_random_word()
+        print("random word: ", word)
         try:
-            searched_movie_list = ia.search_movie(random_word, results=10)
+            searched_movie_list = ia.search_movie(word, results=10)
         except imdb.IMDbError:
             continue
 

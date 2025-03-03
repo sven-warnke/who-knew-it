@@ -2,7 +2,10 @@ import abc
 
 
 class Question(abc.ABC):
-    correct_answer: str
+    @property
+    @abc.abstractmethod
+    def correct_answer(self) -> str:
+        ...
     @abc.abstractmethod
     def question_text(self) -> str:
         ...

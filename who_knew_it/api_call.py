@@ -10,7 +10,7 @@ def prompt_model(prompt: str) -> str:
     with open(key_file) as f:
         key = f.read()
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}"
 
     response = requests.post(
         url=url,
