@@ -1,4 +1,5 @@
 import dataclasses
+import random
 from pathlib import Path
 
 import imdb  # type: ignore
@@ -71,41 +72,67 @@ def _is_correct_film(film_suggestion: str, retrieved_title: str) -> bool:
     return answer.startswith("y")
 
 
-def _get_synopsises_from_suggestion(film_suggestion: str) -> tuple[list[str], str, int]:
+def get_random_word():
+    word_file = Path(__file__).parent.parent / "who_knew_it" / "words.txt"
+
+    with open(word_file) as f:
+        words = f.read().splitlines()
+
+    return random.choice(words)
+
+
+def random_unknown_movie() -> imdb.Movie:
     ia = imdb.Cinemagoer()
 
-    search_movie = ia.search_movie(film_suggestion)
-    retrieved_title = search_movie[0].data["title"]
-    if not _is_correct_film(
-        film_suggestion=film_suggestion, retrieved_title=retrieved_title
-    ):
-        print(f"Not correctly retrieved{film_suggestion} found {retrieved_title}.")
-        return [], retrieved_title, -1
+    while True:
+        random_word = get_random_word()
+        print("random word: ", random_word)
+        try:
+            searched_movie_list = ia.search_movie(random_word, results=10)
+        except imdb.IMDbError:
+            continue
 
-    movie = ia.get_movie(search_movie[0].movieID)
+        for searched_movie in searched_movie_list:
+            movie = ia.get_movie(searched_movie.movieID)
+            if not movie.data.get("plot"):
+                print("unsuitable: ", movie.data["title"], "no plot")
+
+            elif not movie.data.get("votes", 0) < 100000:
+                print("unsuitable: ", movie.data["title"], "too many votes")
+                
+            elif not movie.data["year"]:
+                print("unsuitable: ", movie.data["title"], "no year")
+                
+            elif "episode" in movie.data["title"].lower():
+                print("unsuitable: ", movie.data["title"], "episode")
+
+            elif not movie.data.get("kind") == "movie":
+                print("unsuitable: ", movie.data["title"], "not a movie")
+                
+            else:
+                return movie
+
+
+def _get_synopsises_from_suggestion(movie: imdb.Movie) -> tuple[list[str], str, int]:
     synopsis_list = movie.data["plot"]
     year = movie.data["year"]
-    return synopsis_list, retrieved_title, year
+    return synopsis_list, movie.data["title"], year
 
 
 def select_film_and_generate_synopsis() -> MovieQuestion:
-    while True:
-        print("Getting film suggestion")
-        film_suggestion = _get_film_suggestion()
-        # print(film_suggestion)
-        synopsis_list, retrieved_title, year = _get_synopsises_from_suggestion(
-            film_suggestion=film_suggestion
-        )
-        # print(synopsis_list)
-        if not synopsis_list:
-            print(f"No synopsis found for {film_suggestion}")
-        else:
-            combined_synopsis = _combine_synopsises(
-                film_name=retrieved_title, synopsis_list=synopsis_list
-            )
-            print(retrieved_title)
-            # print(combined_synopsis)
-            break
+    print("Getting film suggestion")
+    film_suggestion = random_unknown_movie()
+    print("Film:", film_suggestion)
+    synopsis_list, retrieved_title, year = _get_synopsises_from_suggestion(
+        movie=film_suggestion
+    )
+    print(synopsis_list)
+    
+    combined_synopsis = _combine_synopsises(
+        film_name=retrieved_title, synopsis_list=synopsis_list
+    )
+    print(retrieved_title)
+
 
     return MovieQuestion(title=retrieved_title, year=year, correct_answer=combined_synopsis)
 
