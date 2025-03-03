@@ -44,18 +44,6 @@ class MovieQuestionGenerator(questions.QuestionGenerator):
         return fake_answers
 
 
-
-
-def _get_film_suggestion() -> str:
-    prompt_file = "film_suggestion.txt"
-    prompt_file_path = PROMPT_FOLDER_PATH / prompt_file
-
-    with open(prompt_file_path) as f:
-        prompt = f.read()
-
-    return api_call.prompt_model(prompt=prompt)
-
-
 def _combine_synopsises(film_name, synopsis_list: list[str]) -> str:
     prompt = f"Please combine the following film synopsises found on imdb for the film {film_name} into one synopsis of length about 3-5 sentences. Don't output anything but the synopsis.\n\n"
     for synopsis in synopsis_list:
@@ -63,13 +51,6 @@ def _combine_synopsises(film_name, synopsis_list: list[str]) -> str:
         prompt += "\n\n"
 
     return api_call.prompt_model(prompt=prompt)
-
-
-def _is_correct_film(film_suggestion: str, retrieved_title: str) -> bool:
-    answer = api_call.prompt_model(
-        f"Could the film '{film_suggestion}' actually be the same as '{retrieved_title}'? answer only with y or n and nothing else."
-    )
-    return answer.startswith("y")
 
 
 def get_random_word():
@@ -160,5 +141,3 @@ might have of the actual film.
 Please output only the synopsis and nothing else. 
 """
     return api_call.prompt_model(prompt=prompt)
-
-

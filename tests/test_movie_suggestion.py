@@ -4,6 +4,8 @@ import time
 
 import imdb  # type: ignore
 
+from who_knew_it import movie_suggestion
+
 
 def test_get_year():
     ia = imdb.Cinemagoer()
@@ -63,3 +65,29 @@ def test_try_random_id():
     assert len(movies) == 10
     for movie in movies:
         print(movie.data["title"], movie.data["year"])
+
+class TestMovieQuestionGenerator:
+    def test_generate_question_and_correct_answer(self):
+        question_generator = movie_suggestion.MovieQuestionGenerator()
+
+        movie_question = question_generator.generate_question_and_correct_answer()
+
+        assert isinstance(movie_question, movie_suggestion.MovieQuestion)
+        assert isinstance(movie_question.question_text(), str)
+        assert isinstance(movie_question.correct_answer, str)
+
+        fake_answers = question_generator.write_fake_answers(
+            question=movie_question.question_text(),
+            correct_answer=movie_question.correct_answer,
+            n_fake_answers=2,
+        )
+
+        assert isinstance(fake_answers, list)
+        assert all(isinstance(answer, str) for answer in fake_answers)
+
+        print("Question: ", movie_question.question_text())
+        print("Correct answer: ", movie_question.correct_answer)
+        print("Fake answers: ")
+        for answer in fake_answers:
+            print(answer)
+
