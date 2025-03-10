@@ -1012,6 +1012,9 @@ def answer_writing_screen(
                     question=question_object.question_text(),
                     correct_answer=question_object.get_correct_answer(),
                 )
+                question = get_question(
+                    game_id=game_id, question_number=question_number
+                )
             else:
                 print("Waiting for host to generate question")
                 while question is None:
