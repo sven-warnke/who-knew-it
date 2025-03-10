@@ -35,7 +35,7 @@ class SayingQuestion(questions.Question):
 class SayingQuestionGenerator(questions.QuestionGenerator):
     def generate_question_and_correct_answer(self) -> SayingQuestion:
         while True:
-            language = random.choice(generate_random_languages())
+            language = generate_random_languages()
             print(language)
             saying = generate_saying(language)
             extracted_question = extract_saying_if_possible(saying, language)
