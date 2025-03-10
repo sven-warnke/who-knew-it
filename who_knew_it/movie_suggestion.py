@@ -14,6 +14,9 @@ class MovieQuestion(questions.Question):
     year: int
     correct_answer: str
 
+    def get_correct_answer(self) -> str:
+        return self.correct_answer
+
     def question_text(self) -> str:
         return f'What is the plot of the {self.year} film "{self.title}"?'
 

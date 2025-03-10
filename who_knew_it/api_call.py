@@ -1,14 +1,14 @@
 from pathlib import Path
 
 import requests
+import streamlit as st
 
+
+def _get_key() -> str:
+    return st.secrets["google_ai_studio"]
 
 def prompt_model(prompt: str) -> str:
-    key_file = (
-        Path(__file__).parent.parent.parent.parent / "api_keys" / "google-ai-studio.txt"
-    )
-    with open(key_file) as f:
-        key = f.read()
+    key = _get_key()
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}"
 

@@ -24,8 +24,8 @@ class SayingQuestion(questions.Question):
     language: str
     saying: Saying
 
-    @property
-    def correct_answer(self) -> str:
+
+    def get_correct_answer(self) -> str:
         return self.saying.format()
 
     def question_text(self) -> str:

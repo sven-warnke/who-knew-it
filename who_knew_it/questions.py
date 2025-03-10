@@ -2,9 +2,9 @@ import abc
 
 
 class Question(abc.ABC):
-    @property
+
     @abc.abstractmethod
-    def correct_answer(self) -> str:
+    def get_correct_answer(self) -> str:
         ...
     @abc.abstractmethod
     def question_text(self) -> str:

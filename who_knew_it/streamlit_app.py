@@ -80,6 +80,9 @@ def get_cursor() -> duckdb.DuckDBPyConnection:
 
 @st.cache_resource
 def create_tables_if_not_exist() -> None:
+
+    DB_FILE.parent.mkdir(exist_ok=True, parents=True)
+
     for f in DB_FILE.parent.glob("*"):
         f.unlink()
 
@@ -1007,7 +1010,7 @@ def answer_writing_screen(
                     game_id=game_id,
                     question_number=question_number,
                     question=question_object.question_text(),
-                    correct_answer=question_object.correct_answer,
+                    correct_answer=question_object.get_correct_answer(),
                 )
             else:
                 print("Waiting for host to generate question")
