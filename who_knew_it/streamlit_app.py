@@ -1083,7 +1083,6 @@ def guessing_screen(
     st.title(question)
     st.header("Here are your options. Which one do you think is correct?")
 
-    retrieved_title = question
     combined_synopsis = get_correct_answer(
         game_id=game_id, question_number=question_number
     )
@@ -1104,7 +1103,7 @@ def guessing_screen(
                 fake_answers = []
                 for _ in range(n_fake_answers):
                     fake_answer_text = movie_suggestion.create_fake_movie_synopsis(
-                        info_about_film=retrieved_title,
+                        info_about_film=question,
                         avoid_examples=[combined_synopsis],
                     )
                     fake_answers.append(fake_answer_text)
@@ -1132,7 +1131,7 @@ def guessing_screen(
         PlayerAnswerTuple(CORRECT_ANSWER_ID, combined_synopsis, correct_answer_rank)
     ]
     player_answer_tuples = sorted(player_answer_tuples, key=lambda x: x.answer_order)
-    st.header(f"What's the plot of the film {retrieved_title}?")
+    st.header(question)
 
     button_labels = get_button_labels(len(player_answer_tuples))
 
