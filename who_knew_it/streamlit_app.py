@@ -1131,7 +1131,6 @@ def guessing_screen(
         PlayerAnswerTuple(CORRECT_ANSWER_ID, combined_synopsis, correct_answer_rank)
     ]
     player_answer_tuples = sorted(player_answer_tuples, key=lambda x: x.answer_order)
-    st.header(question)
 
     button_labels = get_button_labels(len(player_answer_tuples))
 
