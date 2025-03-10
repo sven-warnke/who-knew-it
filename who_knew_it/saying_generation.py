@@ -16,7 +16,7 @@ class Saying:
     divider: str
 
     def format(self) -> str:
-        return f"{self.literal_translation}{self.divider}{self.definition}"
+        return f"{self.literal_translation}" #{self.divider}{self.definition}"
 
 
 @dataclasses.dataclass
@@ -29,7 +29,7 @@ class SayingQuestion(questions.Question):
         return self.saying.format()
 
     def question_text(self) -> str:
-        return f'What is a real {self.language} figure of speech? Please write the literal translation and the meaning of the figure of speech.'
+        return f'What is a real {self.language} figure of speech? Please write the literal translation in English.'
 
 
 class SayingQuestionGenerator(questions.QuestionGenerator):
