@@ -9,7 +9,13 @@ from pathlib import Path
 import duckdb
 import streamlit as st
 
-from who_knew_it import authenticator, movie_suggestion, name_generation
+from who_knew_it import (
+    authenticator,
+    movie_suggestion,
+    name_generation,
+    questions,
+    saying_generation,
+)
 
 DEFAULT_N_FAKE_ANSWERS = 2
 MAX_N_FAKE_ANSWERS = 4
@@ -994,6 +1000,15 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
     )
 
 
+
+def get_question_generator(question_number: int) -> questions.QuestionGenerator:
+    if question_number % 2 == 0:
+        return movie_suggestion.MovieQuestionGenerator()
+    else:
+        return saying_generation.SayingQuestionGenerator()
+
+
+
 def answer_writing_screen(
     player_id: str, game_id: int, is_host: bool, question_number: int
 ) -> None:
@@ -1004,7 +1019,7 @@ def answer_writing_screen(
             if is_host:
                 print("Generating Question since I am host")
                 question_object = (
-                    movie_suggestion.MovieQuestionGenerator().generate_question_and_correct_answer()
+                    get_question_generator(question_number).generate_question_and_correct_answer()
                 )
                 add_question_and_correct_answer(
                     game_id=game_id,
