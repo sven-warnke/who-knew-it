@@ -1100,13 +1100,11 @@ def guessing_screen(
 
         with st.spinner("Writing the wrong answers..."):
             if is_host:
-                fake_answers = []
-                for _ in range(n_fake_answers):
-                    fake_answer_text = movie_suggestion.create_fake_movie_synopsis(
-                        info_about_film=question,
-                        avoid_examples=[combined_synopsis],
-                    )
-                    fake_answers.append(fake_answer_text)
+                fake_answers = get_question_generator(question_number).write_fake_answers(  # type: ignore
+                    question=question,
+                    correct_answer=combined_synopsis,
+                    n_fake_answers=n_fake_answers,
+                )
 
                 add_fake_answers(
                     game_id=game_id,
