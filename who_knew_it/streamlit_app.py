@@ -9,7 +9,7 @@ from pathlib import Path
 import duckdb
 import streamlit as st
 
-from who_knew_it import movie_suggestion, name_generation
+from who_knew_it import authenticator, movie_suggestion, name_generation
 
 DEFAULT_N_FAKE_ANSWERS = 2
 MAX_N_FAKE_ANSWERS = 4
@@ -818,7 +818,7 @@ def leave_if_not_in_game(player_id: str, game_id: int, all_players: list[str]) -
         st.rerun()
 
 
-def main():
+def sql_editor_sidebar() -> None:
     with st.sidebar:
         unsafe_sql = st.text_area(
             "SQL",
@@ -829,6 +829,11 @@ def main():
             with get_cursor() as con:
                 result = con.execute(unsafe_sql).fetchall()
             st.write(result)
+
+
+def main():
+    if authenticator.authenticated():
+        sql_editor_sidebar()
 
     create_tables_if_not_exist()
 

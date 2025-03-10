@@ -1,0 +1,13 @@
+cookie:
+  expiry_days: 30
+  key: some_signature_key
+  name: some_cookie_name
+credentials:
+  usernames:
+    admin:
+      email: null
+      failed_login_attempts: 0
+      logged_in: true
+      name: Admin
+      password: $2b$12$ILd1B0fctshsfLthLW61Ne.ZBMRrSNqCBKigqA8XiaYslTlzmT4k6
+preauthorized: null
