@@ -15,6 +15,7 @@ from who_knew_it import (
     name_generation,
     questions,
     saying_generation,
+    word_definition_question,
 )
 
 DEFAULT_N_FAKE_ANSWERS = 2
@@ -1002,8 +1003,12 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
 
 
 def get_question_generator(question_number: int) -> questions.QuestionGenerator:
-    if question_number % 2 == 0:
+    rest = question_number % 3
+
+    if rest == 0:
         return movie_suggestion.MovieQuestionGenerator()
+    elif rest == 1:
+        return word_definition_question.OldEnglishWordDefinitionQuestionGenerator()
     else:
         return saying_generation.SayingQuestionGenerator()
 

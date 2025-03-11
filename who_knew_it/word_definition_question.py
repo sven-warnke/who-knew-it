@@ -96,7 +96,7 @@ def _create_fake_answers(question: str, definition: str, avoid_examples: list[st
     avoid_examples_str = "\n\n".join(avoid_examples)
     
     avoid_clause = f"""
-    Further, avoid anything that is similar to the following examples:
+    Further, avoid anything that is similar in content to the following examples:
     {avoid_examples_str}
     """ if avoid_examples else ""
 
@@ -104,8 +104,8 @@ def _create_fake_answers(question: str, definition: str, avoid_examples: list[st
     You are hosting a game where players have to write a convincing fake definition of an obscure, 
     old english word. It should be very short and simple.
     You have to write a confincing fake definition for the following question: {question}
-    The definition according to the oxford dictionary is: {definition}
-    Please make it completely different from this definition.
+    The definition is: {definition}
+    Please make it similar in style to the definition but with completetly different content.
 
     {avoid_clause}
     
