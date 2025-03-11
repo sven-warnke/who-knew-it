@@ -7,8 +7,7 @@ def main():
     with open(text_file) as f:
         lines = f.read().splitlines()
 
-    with open("nouns.csv", "w") as f:
-        f.write("noun|definition\n")
+    with open(text_file.parent / "nouns.csv", "w") as f:
         old_english = None
         noun = None
         definition = None
