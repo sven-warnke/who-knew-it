@@ -17,7 +17,7 @@ dependencies = [
     "cinemagoer (>=2023.5.1,<2024.0.0)",
     "beautifulsoup4 (>=4.13.3,<5.0.0)",
     "streamlit-authenticator (>=0.4.2,<0.5.0)",
-    "types-pyyaml (>=6.0.12.20241230,<7.0.0.0)"
+    "types-pyyaml (>=6.0.12.20241230,<7.0.0.0)",
 ]
 
 

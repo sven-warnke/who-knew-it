@@ -7,6 +7,7 @@ from functools import partial
 from pathlib import Path
 
 import duckdb
+import extra_streamlit_components as stx  # type: ignore
 import streamlit as st
 
 from who_knew_it import (
@@ -61,6 +62,7 @@ class Var(enum.StrEnum):
     correct_answer_rank = "correct_answer_rank"
     player_id_of_chosen_answer = "player_id_of_chosen_answer"
     fooled_players = "fooled_players"
+    dummy_cookie = "dummy_cookie"
 
 
 class GameStage(enum.IntEnum):
@@ -292,7 +294,6 @@ def register_player_id_and_name(player_id: str, player_name: str) -> None:
             """
     with get_cursor() as con:
         con.execute(query)
-    st.session_state[Var.player_id] = player_id
 
 
 def set_player_name(player_id: str, player_name: str) -> None:
@@ -344,12 +345,41 @@ def get_player_name(player_id: str) -> str:
     return result[0][0]
 
 
+def player_id_is_in_db(player_id: str) -> bool:
+    query = f"""
+    SELECT {Var.player_id} FROM {Tables.players} WHERE {Var.player_id} = '{player_id}'
+    """
+    print("player_id_is_in_db: ", query)
+    with get_cursor() as con:
+        result = con.execute(query).fetchall()
+
+    if len(result) > 1:
+        raise ValueError(f"Expected result of length 1, found {result}")
+
+    return len(result) == 1
+
+
 def determine_player_id() -> str:
-    player_id = st.session_state.get(Var.player_id, None)
+
+    cookie_controller = stx.CookieManager()
+    player_id = cookie_controller.get(str(Var.player_id))
+    print("found player_id", player_id)
+    if not player_id:
+        time.sleep(1)
+        player_id = cookie_controller.get(str(Var.player_id))  # cookie manager needs time to find cookies initially
+        print("found player_id after sleeping", player_id)
+
+    if player_id and not player_id_is_in_db(player_id=player_id):
+        print("Not in db deleting player_id")
+        player_id = None
+        cookie_controller.delete(str(Var.player_id))
+
     if not player_id:
         player_id = generate_player_id()
         player_name = name_generation.generate_player_name()
         register_player_id_and_name(player_id=player_id, player_name=player_name)
+        cookie_controller.set(str(Var.player_id), player_id)
+
     return player_id
 
 
