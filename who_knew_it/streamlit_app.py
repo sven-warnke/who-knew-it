@@ -361,7 +361,7 @@ def player_id_is_in_db(player_id: str) -> bool:
 
 def determine_player_id() -> str:
 
-    cookie_controller = stx.CookieManager()
+    cookie_controller = stx.CookieManager(key="player_id_manager")
     player_id = cookie_controller.get(str(Var.player_id))
     print("found player_id", player_id)
     if not player_id:
@@ -384,7 +384,11 @@ def determine_player_id() -> str:
 
 
 def determine_game_id() -> int | None:
-    return st.session_state.get(Var.game_id, None)
+    game_id = st.query_params.get(str(Var.game_id), None)
+    if game_id is None or not game_id.isdigit():
+        return None
+
+    return int(game_id)
 
 
 def _n_players_in_game_query(game_id: int) -> str:
@@ -429,7 +433,7 @@ def join_game(player_id: str, game_id: int, is_host: bool) -> None:
         joined_succesfully = player_id in get_all_players_in_game(game_id=game_id)
 
     if joined_succesfully:
-        st.session_state[Var.game_id] = game_id
+        st.query_params[Var.game_id] = str(game_id)
         print(f"{player_id} joined game {game_id}.")
 
 
@@ -449,7 +453,10 @@ def kick_from_game(player_id: str, game_id: int) -> None:
 
 def leave_game(player_id: str, game_id: int) -> None:
     remove_from_game(player_id=player_id, game_id=game_id)
-    st.session_state[Var.game_id] = None
+    try:
+        del st.query_params[Var.game_id]
+    except KeyError:
+        pass
 
 
 def is_player_host(player_id: str, game_id: int) -> bool:
