@@ -855,7 +855,7 @@ def change_name_field(player_id: str, player_name: str) -> None:
 
 def player_name_display(player_id: str) -> None:
     player_name = get_player_name(player_id=player_id)
-    st.write(f"Your name is: {player_name}")
+    st.badge(player_name, icon=":material/person:")
 
 
 def leave_if_not_in_game(player_id: str, game_id: int, all_players: list[str]) -> None:
@@ -1054,7 +1054,7 @@ def get_question_generator(question_number: int) -> questions.QuestionGenerator:
 def answer_writing_screen(
     player_id: str, game_id: int, is_host: bool, question_number: int
 ) -> None:
-    
+    player_name_display(player_id=player_id)
     with st.popover("Instructions", icon=":material/help:"):
         st.header("Welcome to 'Who knew it?' with Chat Stewart")
         st.text("The game where the players write the wrong answer.")
@@ -1088,7 +1088,6 @@ def answer_writing_screen(
                         game_id=game_id, question_number=question_number
                     )
 
-    player_name_display(player_id=player_id)
     st.header("Please write a convincing fake answer for the following question:")
     st.title(question)
     st.text_area(
