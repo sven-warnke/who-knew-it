@@ -1054,7 +1054,15 @@ def get_question_generator(question_number: int) -> questions.QuestionGenerator:
 def answer_writing_screen(
     player_id: str, game_id: int, is_host: bool, question_number: int
 ) -> None:
+    
+    with st.popover("Instructions", icon=":material/help:"):
+        st.header("Welcome to 'Who knew it?' with Chat Stewart")
+        st.text("The game where the players write the wrong answer.")
+        st.text("I am the titular Chat Stewart and I ask a relatively obscure trivia question and the players have to write a convincing fake answer.")
+        st.text("I then show the correct answer as well as the fake answers and the players need to guess which one is correct.")
+
     question = get_question(game_id=game_id, question_number=question_number)
+
 
     if question is None:
         with st.spinner("Generating Question..."):
@@ -1081,9 +1089,10 @@ def answer_writing_screen(
                     )
 
     player_name_display(player_id=player_id)
+    st.header("Please write a convincing fake answer for the following question:")
     st.title(question)
     st.text_area(
-        label="Your answer:",
+        label="Your fake answer:",
         key=Var.answer_text,
         on_change=partial(
             set_player_answer,
@@ -1122,6 +1131,13 @@ def guessing_screen(
             "Question is None. This should not have happened. Something is wrong."
         )
     player_name_display(player_id=player_id)
+
+    with st.popover("Instructions", icon=":material/help:"):
+        st.header("Now you need to choose which answer is correct.")
+        st.text("Each player gets one point if they choose the correct answer and another for each player that chooses their fake answer.")
+        st.text("By the way I am also playing as 'The House' and I have put in 2 fake answers with the help of a Large Language Model. I will score one point for each player that chooses my fake answer.")
+        st.text("So we can all score one point per player in the game. Seems fair, but the probability actually favors me, 'The House', and 'The House' always wins.")
+    
     st.title(question)
     st.header("Here are your options. Which one do you think is correct?")
 
@@ -1182,9 +1198,9 @@ def guessing_screen(
     for label, answer_tuple in zip(button_labels, player_answer_tuples, strict=True):
         letter_col, text_col = st.columns([0.2, 0.8], border=True)
         if player_answer == answer_tuple.player_id:
-            icon = "✅"
+            icon = ":material/radio_button_checked:"
         else:
-            icon = None
+            icon = ":material/radio_button_unchecked:"
 
         with letter_col:
             st.button(
@@ -1302,8 +1318,14 @@ def reveal_screen(
         raise ValueError(
             "Question is None. This should not have happened. Something is wrong."
         )
+    with st.popover("Instructions", icon=":material/help:"):
+        st.header("The answers are in for this question.")
+        st.text("Now I will reveal who wrote the answers and which one is correct.")
+        st.text("Each player gets one point if they choose the correct answer and another for each player that chooses their fake answer.")
+        st.text("By the way I am also playing as 'The House' and I have put in 2 fake answers with the help of a Large Language Model. I will score one point for each player that chooses my fake answer.")
+    
     st.title(f"Reveal for question {question_number}")
-    st.text(f"What's the correct answer for question {question}?")
+    st.text(f"What's the correct answer for: {question}?")
 
     player_answer_tuples = get_player_answer_tuples(
         game_id=game_id, question_number=question_number
