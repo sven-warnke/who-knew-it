@@ -1194,8 +1194,9 @@ def guessing_screen(
     )
     player_has_chosen = player_answer is not None
 
+    st.divider()
     for label, answer_tuple in zip(button_labels, player_answer_tuples, strict=True):
-        letter_col, text_col = st.columns([0.2, 0.8], border=True)
+        letter_col, text_col = st.columns([0.2, 0.8])
         if player_answer == answer_tuple.player_id:
             icon = ":material/radio_button_checked:"
         else:
@@ -1244,12 +1245,16 @@ class RevealInfo:
     player_ids_who_chose: list[str]
 
 
+def is_house_player_id(player_id: str) -> bool:
+    return player_id.startswith(HOUSE_PLAYER_ID_PREFIX)
+
+
 def aggregate_house_points(player_points: dict[str, int]) -> dict[str, int]:
     player_points = player_points.copy()
     house_ids = [
         player_id
         for player_id in player_points.keys()
-        if player_id.startswith(HOUSE_PLAYER_ID_PREFIX)
+        if is_house_player_id(player_id)
     ]
     if not house_ids:
         return player_points
@@ -1302,6 +1307,27 @@ def points_entered(game_id: int, question_number: int) -> bool:
     return result[0][0] > 0
 
 
+def get_display_color(some_player_id: str, current_player_id: str) -> str:
+    if some_player_id == current_player_id:
+        return "blue"
+    elif some_player_id == CORRECT_ANSWER_ID:
+        return "green"
+    elif is_house_player_id(some_player_id):
+        return "orange"
+    else:
+        return "violet"
+
+
+def get_badge_icon(some_player_id: str) -> str:
+    if some_player_id == CORRECT_ANSWER_ID:
+        return ":material/check:"
+    elif is_house_player_id(some_player_id):
+        return ":material/house:"
+    else:
+        return ":material/person:"
+
+
+
 def reveal_screen(
     player_id: str, game_id: int, is_host: bool, question_number: int
 ) -> None:
@@ -1324,7 +1350,9 @@ def reveal_screen(
         st.text("By the way I am also playing as 'The House' and I have put in 2 fake answers with the help of a Large Language Model. I will score one point for each player that chooses my fake answer.")
     
     st.title(f"Reveal for question {question_number}")
-    st.text(f"What's the correct answer for: {question}?")
+    st.header(f"What's the correct answer for: {question}")
+
+    st.divider()
 
     player_answer_tuples = get_player_answer_tuples(
         game_id=game_id, question_number=question_number
@@ -1358,30 +1386,40 @@ def reveal_screen(
     player_id_to_name = get_all_players_in_game(game_id=game_id)
     player_id_to_name[CORRECT_ANSWER_ID] = CORRECT_ANSWER_NAME
 
-    answer_col, written_by_col, guessed_by_col = st.columns(3)
-    with answer_col:
-        st.header("Answer")
-    with written_by_col:
-        st.header("Written by")
-    with guessed_by_col:
-        st.header("Guessed by")
     for r_info in reveal_infos:
-        answer_col, written_by_col, guessed_by_col = st.columns(3)
-        with answer_col:
-            if len(r_info.answer_text) <= DISPLAY_LENGTH_LIMIT_TO_EXPANDER:
-                st.text(r_info.answer_text)
-            else:
-                expander_visible = abbreviate_text(
+
+        fooled_players = r_info.player_ids_who_chose
+        
+        if fooled_players:
+            player_display_list = []
+            for player in fooled_players:
+
+                color = get_display_color(some_player_id=player, current_player_id=player)
+                badge_icon = get_badge_icon(some_player_id=player)
+                player_display_list.append(
+                    f":{color}-badge[{badge_icon} {player_id_to_name[player]}]"
+                )
+            above_answer_text = " ".join(player_display_list) + " guessed"
+        else:
+            above_answer_text = ":gray-badge[Noone] guessed"
+        st.markdown(
+            above_answer_text
+        )
+        expander_visible = abbreviate_text(
                     r_info.answer_text, DISPLAY_LENGTH_LIMIT_TO_EXPANDER
                 )
-                with st.expander(label=expander_visible):
-                    st.text(r_info.answer_text)
-        with written_by_col:
-            st.text(player_id_to_name[r_info.player_id_of_author])
-        with guessed_by_col:
-            fooled_players = r_info.player_ids_who_chose
-            for player in fooled_players:
-                st.text(player_id_to_name[player])
+        with st.expander(label=expander_visible):
+            st.text(r_info.answer_text)
+        
+        color = get_display_color(r_info.player_id_of_author, current_player_id=player_id)
+        badge_icon = get_badge_icon(some_player_id=r_info.player_id_of_author)
+
+        is_correct_answer = r_info.player_id_of_author == CORRECT_ANSWER_ID
+
+        verb = "is the" if is_correct_answer else "was written by"
+        st.markdown(f"which {verb} :{color}-badge[{badge_icon} {player_id_to_name[r_info.player_id_of_author]}]")
+
+        st.divider()
 
     player_points = calculate_player_points(reveal_infos=reveal_infos)
     if is_host:
@@ -1401,6 +1439,7 @@ def reveal_screen(
     sorted_player_points_tuples = sorted(
         player_points.items(), key=lambda x: x[1], reverse=True
     )
+    st.header("Points:")
     for col, (player, points) in zip(cols, sorted_player_points_tuples, strict=True):
         with col:
             st.metric(
@@ -1428,7 +1467,10 @@ def abbreviate_text(text: str, width: int) -> str:
         replace_whitespace=False,
         drop_whitespace=False,
     )
-    return wrapped_chunks[0]
+    abbreviated = wrapped_chunks[0]
+    if len(wrapped_chunks) > 1:
+        abbreviated += "..."
+    return abbreviated
 
 
 def get_winner_s(total_points: dict[str, int]) -> list[str]:
