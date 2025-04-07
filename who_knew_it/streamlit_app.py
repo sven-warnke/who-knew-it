@@ -11,6 +11,7 @@ import extra_streamlit_components as stx  # type: ignore
 import streamlit as st
 
 from who_knew_it import (
+    animal_question,
     authenticator,
     movie_suggestion,
     name_generation,
@@ -22,7 +23,7 @@ from who_knew_it import (
 DEFAULT_N_FAKE_ANSWERS = 2
 MAX_N_FAKE_ANSWERS = 4
 N_MAX_PLAYERS = 5
-N_QUESTIONS = 3
+N_QUESTIONS = 4
 MAX_NAME_LENGTH = 20
 DISPLAY_LENGTH_LIMIT_TO_EXPANDER = 30
 
@@ -1040,11 +1041,14 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
 
 
 def get_question_generator(question_number: int) -> questions.QuestionGenerator:
-    rest = question_number % 3
+    rest = question_number % 4
 
     if rest == 0:
         return movie_suggestion.MovieQuestionGenerator()
+    
     elif rest == 1:
+        return animal_question.AnimalQuestionGenerator()
+    elif rest == 2:
         return word_definition_question.OldEnglishWordDefinitionQuestionGenerator()
     else:
         return saying_generation.SayingQuestionGenerator()
