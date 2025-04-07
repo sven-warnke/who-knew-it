@@ -63,7 +63,7 @@ class AnimalQuestionGenerator(questions.QuestionGenerator):
         
         letters = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"]
         while True:
-            starting_letter_clause = f"The first species should start with an '{random.choice(letters)}'."
+            starting_letter_clause = f"The first species should start with an '{random.choice(letters)}'."  # to add more randomness
             if n_fake_answers > 1:
                 starting_letter_clause += f" The second species should start with an '{random.choice(letters)}'."
             
@@ -73,7 +73,7 @@ class AnimalQuestionGenerator(questions.QuestionGenerator):
             prompt = f"""
             You are playing a game where you have to write convincing and fun fake answers, that could trick people into picking it. Please invent fitting fake animal names
             for the following question: "{question}"
-            Please write convincing fake animal names that don't exist but are completely made up. 
+            Please write convincing fake animal names that are of the required group of animals but which don't exist but are completely made up. 
             Please write {n_fake_answers} animal names and nothing else in a list separated by newlines. Don't start the names with 'The'.
             {starting_letter_clause}
             Please answer only with that list and nothing else.
