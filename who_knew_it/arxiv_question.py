@@ -131,7 +131,7 @@ class ArxivQuestionGenerator(questions.QuestionGenerator):
             prompt = f"""
             You are playing a game where you have to write convincing and fun fake answers, that could trick people into picking it. Please invent fitting scientific paper titles
             that fit the following question: "{question}".
-            Please write {n_fake_answers} fake titles and nothing else in a list separated by newlines
+            Please write {n_fake_answers} fake titles and nothing else in a list separated by newlines. Ideally, the paper is not too technical and a bit quirky or funny.
             {starting_letter_clause}
             Please answer only with that list and nothing else.
             """

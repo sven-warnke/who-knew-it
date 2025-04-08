@@ -12,19 +12,19 @@ import streamlit as st
 
 from who_knew_it import (
     animal_question,
+    arxiv_question,
     authenticator,
     movie_suggestion,
     name_generation,
     pokemon_question,
     questions,
-    saying_generation,
     word_definition_question,
 )
 
 DEFAULT_N_FAKE_ANSWERS = 2
 MAX_N_FAKE_ANSWERS = 4
 N_MAX_PLAYERS = 5
-N_QUESTIONS = 4
+N_QUESTIONS = 5
 MAX_NAME_LENGTH = 20
 DISPLAY_LENGTH_LIMIT_TO_EXPANDER = 30
 
@@ -1052,7 +1052,7 @@ def get_question_generator(question_number: int) -> questions.QuestionGenerator:
     elif rest == 2:
         return word_definition_question.OldEnglishWordDefinitionQuestionGenerator()
     elif rest == 3:
-        return saying_generation.SayingQuestionGenerator()
+        return arxiv_question.ArxivQuestionGenerator()
     elif rest == 4:
         return pokemon_question.PokemonQuestionGenerator()
 
