@@ -15,6 +15,7 @@ from who_knew_it import (
     authenticator,
     movie_suggestion,
     name_generation,
+    pokemon_question,
     questions,
     saying_generation,
     word_definition_question,
@@ -1041,7 +1042,7 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
 
 
 def get_question_generator(question_number: int) -> questions.QuestionGenerator:
-    rest = question_number % 4
+    rest = question_number % 5
 
     if rest == 0:
         return movie_suggestion.MovieQuestionGenerator()
@@ -1050,8 +1051,13 @@ def get_question_generator(question_number: int) -> questions.QuestionGenerator:
         return animal_question.AnimalQuestionGenerator()
     elif rest == 2:
         return word_definition_question.OldEnglishWordDefinitionQuestionGenerator()
-    else:
+    elif rest == 3:
         return saying_generation.SayingQuestionGenerator()
+    elif rest == 4:
+        return pokemon_question.PokemonQuestionGenerator()
+
+    else:
+        raise ValueError(f"Found {rest}")
 
 
 
