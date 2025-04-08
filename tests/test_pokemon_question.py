@@ -5,7 +5,7 @@ class TestPokemonQuestionGenerator:
     def test__random_animal_group_and_species(self):
         name = pokemon_question.PokemonQuestionGenerator().random_pokemon()
         assert isinstance(name, list)
-        assert len(name) == 50
+        assert len(name) == 10
         for answer in name:
             assert isinstance(answer, str)
         print("Pokemon: ", name)

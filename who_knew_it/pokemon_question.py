@@ -82,7 +82,7 @@ class PokemonQuestionGenerator(questions.QuestionGenerator):
 
             fake_answers = [r.replace("*", "").strip() for r in split_response if r.strip()]
 
-            if real_pokemon:=[a in fake_answers for a in df["name"].tolist()]:
+            if real_pokemon:=[a for a in df["name"].tolist() if a in fake_answers]:
                 print(f"Some of the fake answers are already in the dataset: {real_pokemon}. Try again.")
                 continue
 
