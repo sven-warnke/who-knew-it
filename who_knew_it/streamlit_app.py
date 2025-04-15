@@ -1006,7 +1006,7 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
     player_name = get_player_name(player_id=player_id)
     st.title(f"You have joined game {game_id}")
     change_name_field(player_id=player_id, player_name=player_name)
-    st.text(f"You are {'not ' if not is_host else ''} the host.")
+    st.text(f"You are {'not ' if not is_host else ''}the host.")
     st.header("Players:")
     all_players = get_all_players_in_game(game_id=game_id)
     leave_if_not_in_game(
