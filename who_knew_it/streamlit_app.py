@@ -946,6 +946,7 @@ def main():
 
     game_stage = determine_game_stage(game_id)
     if game_stage is None:
+        st.info("The game was closed by the host.")
         leave_game(player_id=player_id, game_id=game_id)
 
     if game_stage == GameStage.no_game_selected:
