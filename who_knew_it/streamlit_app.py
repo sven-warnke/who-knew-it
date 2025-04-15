@@ -16,6 +16,7 @@ from who_knew_it import (
     authenticator,
     movie_suggestion,
     name_generation,
+    podcast_question,
     pokemon_question,
     questions,
     word_definition_question,
@@ -24,7 +25,7 @@ from who_knew_it import (
 DEFAULT_N_FAKE_ANSWERS = 2
 MAX_N_FAKE_ANSWERS = 4
 N_MAX_PLAYERS = 5
-N_QUESTIONS = 5
+N_QUESTIONS = 6
 MAX_NAME_LENGTH = 20
 DISPLAY_LENGTH_LIMIT_TO_EXPANDER = 30
 
@@ -1042,9 +1043,9 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
 
 
 def get_question_generator(question_number: int) -> questions.QuestionGenerator:
-    rest = question_number % 5
+    rest = question_number % 6
 
-    if rest == 0:
+    if rest == 0:  # question number is 1 indexed so should be last
         return movie_suggestion.MovieQuestionGenerator()
     
     elif rest == 1:
@@ -1055,6 +1056,9 @@ def get_question_generator(question_number: int) -> questions.QuestionGenerator:
         return arxiv_question.ArxivQuestionGenerator()
     elif rest == 4:
         return pokemon_question.PokemonQuestionGenerator()
+
+    elif rest == 5:
+        return podcast_question.PodcastQuestionGenerator()
 
     else:
         raise ValueError(f"Found {rest}")

@@ -3,7 +3,7 @@ import random
 
 import pandas as pd
 
-from who_knew_it import api_call, questions
+from who_knew_it import api_call, questions, random_word
 
 ANIMALS_FOLDER = pathlib.Path(__file__).parent / "animals"
 
@@ -61,14 +61,13 @@ class AnimalQuestionGenerator(questions.QuestionGenerator):
     def write_fake_answers(self, question: str, correct_answer: str, n_fake_answers: int) -> list[str]:
         del correct_answer  # not needed here
         
-        letters = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"]
         while True:
-            starting_letter_clause = f"The first species should start with an '{random.choice(letters)}'."  # to add more randomness
+            starting_letter_clause = f"The first species should start with an '{random_word.random_letter()}'."  # to add more randomness
             if n_fake_answers > 1:
-                starting_letter_clause += f" The second species should start with an '{random.choice(letters)}'."
+                starting_letter_clause += f" The second species should start with an '{random_word.random_letter()}'."
             
             for i in range(2, n_fake_answers):
-                starting_letter_clause += f" The {i + 1}. species should start with an '{random.choice(letters)}'."
+                starting_letter_clause += f" The {i + 1}. species should start with an '{random_word.random_letter()}'."
 
             prompt = f"""
             You are playing a game where you have to write convincing and fun fake answers, that could trick people into picking it. Please invent fitting fake animal names
