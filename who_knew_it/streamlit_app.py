@@ -265,7 +265,7 @@ def set_game_state(game_id: int, game_stage: GameStage) -> None:
         con.execute(query)
 
 
-def get_game_stage_from_db(game_id: int) -> GameStage:
+def get_game_stage_from_db(game_id: int) -> GameStage | None:
     query = (
         f"SELECT {Var.game_stage} FROM {Tables.games} WHERE {Var.game_id} = {game_id}"
     )
@@ -274,13 +274,11 @@ def get_game_stage_from_db(game_id: int) -> GameStage:
         results = con.execute(query).fetchall()
 
     if len(results) != 1:
-        raise ValueError(
-            f"Did not find exactly one entry for game id {game_id}: {results}"
-        )
+        return None
     return results[0][0]  # don't return tuple
 
 
-def determine_game_stage(game_id: int | None) -> GameStage:
+def determine_game_stage(game_id: int | None) -> GameStage | None:
     if game_id is None:
         return GameStage.no_game_selected
 
@@ -947,6 +945,8 @@ def main():
         )
 
     game_stage = determine_game_stage(game_id)
+    if game_stage is None:
+        leave_game(player_id=player_id, game_id=game_id)
 
     if game_stage == GameStage.no_game_selected:
         find_game_screen(player_id=player_id)
