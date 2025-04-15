@@ -463,8 +463,8 @@ def close_game_if_no_host(game_id: int) -> None:
     """
     print("close_game_if_no_host: ", query)
     with get_cursor() as con:
-        result = con.execute(query)
-    if len(result.fetchall()) == 0:
+        con.execute(query)
+    if len(con.fetchall()) == 0:
         close_game(game_id=game_id)
 
 
