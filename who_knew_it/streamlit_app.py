@@ -363,10 +363,13 @@ def player_id_is_in_db(player_id: str) -> bool:
 
 
 def determine_player_id() -> str:
+    cookie_controller = stx.CookieManager(key="player_id_manager")  # key needs to be different from the one authenticator uses
+    player_id = st.session_state.get(str(Var.player_id))
 
-    cookie_controller = stx.CookieManager(key="player_id_manager")
-    player_id = cookie_controller.get(str(Var.player_id))
-    print("found player_id", player_id)
+    if not player_id:
+        player_id = cookie_controller.get(str(Var.player_id))
+        print("found player_id in cookie", player_id)
+
     if not player_id:
         time.sleep(1)
         player_id = cookie_controller.get(str(Var.player_id))  # cookie manager needs time to find cookies initially
@@ -376,12 +379,15 @@ def determine_player_id() -> str:
         print("Not in db deleting player_id")
         player_id = None
         cookie_controller.delete(str(Var.player_id))
+        st.session_state[str(Var.player_id)] = None
 
     if not player_id:
         player_id = generate_player_id()
         player_name = name_generation.generate_player_name()
         register_player_id_and_name(player_id=player_id, player_name=player_name)
-        cookie_controller.set(str(Var.player_id), player_id)
+
+    st.session_state[str(Var.player_id)] = player_id
+    cookie_controller.set(str(Var.player_id), player_id)
 
     return player_id
 
