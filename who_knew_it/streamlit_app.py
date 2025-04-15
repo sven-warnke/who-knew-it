@@ -453,6 +453,50 @@ def remove_from_game(player_id: str, game_id: int) -> None:
     print("remove_from_game: ", query)
     with get_cursor() as con:
         con.execute(query)
+    
+    close_game_if_no_host(game_id=game_id)
+
+
+def close_game_if_no_host(game_id: int) -> None:
+    query = f"""
+    SELECT {Var.player_id} FROM {Tables.game_player} WHERE {Var.game_id} = {game_id} AND {Var.is_host} = TRUE;
+    """
+    print("close_game_if_no_host: ", query)
+    with get_cursor() as con:
+        result = con.execute(query)
+    if len(result.fetchall()) == 0:
+        close_game(game_id=game_id)
+
+
+def close_game(game_id: int) -> None:
+    
+    query = f"""
+    DELETE FROM {Tables.game_player} WHERE {Var.game_id} = {game_id};
+    """
+    print("close_game_if_no_host: ", query)
+    with get_cursor() as con:
+        con.execute(query)
+
+    query = f"""
+    DELETE FROM {Tables.points} WHERE {Var.game_id} = {game_id};
+    """
+    print("close_game_if_no_host: ", query)
+    with get_cursor() as con:
+        con.execute(query)
+
+    query = f"""
+    DELETE FROM {Tables.questions} WHERE {Var.game_id} = {game_id};
+    """
+    print("close_game_if_no_host: ", query)
+    with get_cursor() as con:
+        con.execute(query)
+
+    query = f"""
+    DELETE FROM {Tables.games} WHERE {Var.game_id} = {game_id};
+    """
+    print("close_game_if_no_host: ", query)
+    with get_cursor() as con:
+        con.execute(query)
 
 
 def kick_from_game(player_id: str, game_id: int) -> None:
@@ -1007,7 +1051,7 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
     st.title(f"You have joined game {game_id}")
     change_name_field(player_id=player_id, player_name=player_name)
     st.text(f"You are {'not ' if not is_host else ''}the host.")
-    st.header("Players:")
+    
     all_players = get_all_players_in_game(game_id=game_id)
     leave_if_not_in_game(
         player_id=player_id,
@@ -1016,6 +1060,7 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
     )
     print(all_players)
 
+    st.header(f"Players ({len(all_players)}/{N_MAX_PLAYERS}):")
     for p_id, p_name in all_players.items():
         cols = st.columns(2)
         with cols[0]:
