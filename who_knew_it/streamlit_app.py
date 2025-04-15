@@ -1469,7 +1469,7 @@ def reveal_screen(
             )
 
     st.button(
-        "Next question",
+        "Next question" if question_number < N_QUESTIONS else "Finish game",
         type="primary",
         on_click=partial(
             next_question, game_id=game_id, question_number=question_number
