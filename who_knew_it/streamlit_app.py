@@ -490,6 +490,13 @@ def close_game(game_id: int) -> None:
         con.execute(query)
 
     query = f"""
+    DELETE FROM {Tables.player_answers} WHERE {Var.game_id} = {game_id};
+    """
+    print("close_game_if_no_host: ", query)
+    with get_cursor() as con:
+        con.execute(query)
+
+    query = f"""
     DELETE FROM {Tables.games} WHERE {Var.game_id} = {game_id};
     """
     print("close_game_if_no_host: ", query)
@@ -642,6 +649,22 @@ def add_question_and_correct_answer(
         con.execute(query, variables)
 
 
+def determine_n_human_players(game_id: int) -> int:
+    query = f"""
+    SELECT COUNT(*) FROM {Tables.game_player} 
+    JOIN {Tables.players}
+    ON {Tables.game_player}.{Var.player_id} = {Tables.players}.{Var.player_id}
+    WHERE {Tables.game_player}.{Var.game_id} = {game_id} 
+    AND {Tables.players}.{Var.is_house} = FALSE;
+    """
+    with get_cursor() as con:
+        result = con.execute(query).fetchall()
+
+    if len(result) != 1:
+        raise ValueError(f"Expected result of length 1, found {result}")
+    return result[0][0]
+
+
 def determine_whether_all_answers_in(game_id: int, question_number: int) -> bool:
     query = f"""
     SELECT 
@@ -683,7 +706,7 @@ def get_player_answer_tuples(
     """
     with get_cursor() as con:
         result = con.execute(query).fetchall()
-    return [PlayerAnswerTuple(*res) for res in result]
+    return [PlayerAnswerTuple(*res) for res in result if res[1] is not None]
 
 
 def set_player_answer(
@@ -1154,36 +1177,43 @@ def answer_writing_screen(
                         game_id=game_id, question_number=question_number
                     )
 
-    st.header("Please write a convincing fake answer for the following question:")
-    st.title(question)
-    st.text_area(
-        label="Your fake answer:",
-        key=Var.answer_text,
-        on_change=partial(
-            set_player_answer,
+    if determine_n_human_players(game_id=game_id) > 1:
+
+
+        st.header("Please write a convincing fake answer for the following question:")
+        st.title(question)
+        st.text_area(
+            label="Your fake answer:",
+            key=Var.answer_text,
+            on_change=partial(
+                set_player_answer,
+                game_id=game_id,
+                player_id=player_id,
+                question_number=question_number,
+            ),
+        )
+
+        all_answers_in = determine_whether_all_answers_in(
+            game_id=game_id, question_number=question_number
+        )
+
+        st.button(
+            "Finish writing answers",
+            on_click=lambda: set_game_state(game_id=game_id, game_stage=GameStage.guessing),
+            disabled=not all_answers_in or not is_host,
+            type="primary",
+            help="Only the host can finish writing answers if all answers are in.",
+        )
+        rerun_if_game_stage_changed_or_all_answers_in(
             game_id=game_id,
-            player_id=player_id,
+            current_stage=GameStage.answer_writing,
             question_number=question_number,
-        ),
-    )
+            all_answers_in_already_before=all_answers_in,
+        )
 
-    all_answers_in = determine_whether_all_answers_in(
-        game_id=game_id, question_number=question_number
-    )
-
-    st.button(
-        "Finish writing answers",
-        on_click=lambda: set_game_state(game_id=game_id, game_stage=GameStage.guessing),
-        disabled=not all_answers_in or not is_host,
-        type="primary",
-        help="Only the host can finish writing answers if all answers are in.",
-    )
-    rerun_if_game_stage_changed_or_all_answers_in(
-        game_id=game_id,
-        current_stage=GameStage.answer_writing,
-        question_number=question_number,
-        all_answers_in_already_before=all_answers_in,
-    )
+    else:
+        set_game_state(game_id=game_id, game_stage=GameStage.guessing)
+        st.rerun()
 
 
 def guessing_screen(
@@ -1337,17 +1367,26 @@ def aggregate_house_points(player_points: dict[str, int]) -> dict[str, int]:
 
 
 def calculate_player_points(reveal_infos: list[RevealInfo]) -> dict[str, int]:
-    points_through_other_people = {
-        ri.player_id_of_author: len(ri.player_ids_who_chose)
-        for ri in reveal_infos
-        if ri.player_id_of_author != CORRECT_ANSWER_ID
+
+    players_who_participated = {
+        *{ri.player_id_of_author for ri in reveal_infos},
+        *{player_id for ri in reveal_infos for player_id in ri.player_ids_who_chose},
     }
+
+    player_points = {
+        player_id: 0 for player_id in players_who_participated if player_id != CORRECT_ANSWER_ID
+    }
+
+    for ri in reveal_infos:
+        if ri.player_id_of_author != CORRECT_ANSWER_ID:
+            player_points[ri.player_id_of_author] += len(ri.player_ids_who_chose)
+
     [correct_answer_info] = [
         ri for ri in reveal_infos if ri.player_id_of_author == CORRECT_ANSWER_ID
     ]
     for player_id in correct_answer_info.player_ids_who_chose:
-        points_through_other_people[player_id] += 1
-    return points_through_other_people
+        player_points[player_id] += 1
+    return player_points
 
 
 def get_total_points(game_id: int) -> dict[str, int]:
