@@ -1093,6 +1093,7 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
             with cols[1]:
                 st.button(
                     "Kick",
+                    key=f"{p_id}_kick",
                     on_click=partial(kick_from_game, game_id=game_id, player_id=p_id),
                 )
 
