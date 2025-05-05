@@ -1060,8 +1060,13 @@ def find_game_screen(player_id: str) -> None:
                     type="primary",
                 )
             with col_players:
-                for player in all_players_in_game.values():
-                    st.text(player)
+                player_display_list = [
+                    f":blue-badge[:material/person: {player}]"
+                    for player in all_players_in_game.values()
+                ]
+                
+                st.markdown(" ".join(player_display_list))
+            
             with col_how_many_free:
                 color = "green" if len(all_players_in_game) < N_MAX_PLAYERS else "red"
                 st.markdown(f":{color}[{len(all_players_in_game)}/{N_MAX_PLAYERS}]")
