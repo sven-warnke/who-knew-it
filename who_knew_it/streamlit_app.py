@@ -1502,6 +1502,8 @@ def reveal_screen(
         st.text("By the way I am also playing as 'The House' and I have put in 2 fake answers with the help of a Large Language Model. I will score one point for each player that chooses my fake answer.")
     
     st.title(f"Reveal for question {question_number}")
+    if question_number == N_QUESTIONS:
+        st.header("This round is worth triple points for the players!")
     st.header(f"What's the correct answer for: {question}")
 
     st.divider()
