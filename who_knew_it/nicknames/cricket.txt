@@ -1,0 +1,34 @@
+
+
+    "The Don" = Donald Bradman, Australian, generally acknowledged as the greatest batsman of all time,  Australia
+    "The Wall" = Rahul Dravid,
+    "The Cat" = Phil Tufnell,  England
+    "Creepy" = John Crawley,  England
+    "Wireless" = Joe Root,  England
+    "Chef", "Captain Cook" = Alistair Cook,  England
+    "Beefy" = Ian Botham,  England
+    "Banger" = Marcus Trescothick,  England
+    "Pup" = Michael Clarke,  Australia
+    "Smudge" = Steve Smith,  Australia
+    "Baz" = Brendon McCullum,  New Zealand
+    "The Big Show" = Glenn Maxwell,  Australia
+    "White Lightning" = Allan Donald,  South Africa
+    "Steyn Gun" = Dale Steyn,  South Africa
+    "Alfie" = Justin Langer,  Australia
+    "Haydos" = Matthew Hayden,  Australia
+    "All Hands Zondeki" = Monde Zondeki,  South Africa
+    "Fizz", "Cutter master" = Mustafizur Rahman,  Bangladesh
+    "Narail Express" = Mashrafe Mortaza,  Bangladesh
+    "Rawalpindi Express" = Shoaib Akhtar,  Pakistan
+    "Little Master", "God of Cricket" = Sachin Tendulkar,  India
+    "Dada" = Sourav Ganguly,  India
+    "Boom Boom Afridi", "Lala" = Shahid Afridi,  Pakistan
+    "Gabbar" = Shikhar Dhawan,  India
+    "Mr.360 Degree" = AB de Villiers,  South Africa
+    "Cheeku", "King Kohli" = Virat Kohli,  India
+    "Bhajji" = Harbhajan Singh,  India
+    "Captain Cool" = Mahendra Singh Dhoni,  India
+    "Hitman" = Rohit Sharma,  India
+    "Slinga" = Lasith Malinga,  Sri Lanka
+    "Dial M" = Tim Murtagh, Ireland  IRE
+
