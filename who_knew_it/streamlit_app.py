@@ -506,7 +506,7 @@ def close_game(game_id: int) -> None:
 
 def kick_from_game(player_id: str, game_id: int) -> None:
     remove_from_game(player_id=player_id, game_id=game_id)
-    st.info(f"{player_id} was kicked from game {game_id}.")
+    st.info(f"Player was kicked from game {game_id}.")
 
 
 def leave_game(player_id: str, game_id: int) -> None:
@@ -1111,7 +1111,7 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
         )
     with cols[2]:
         st.button(
-            "Start Game",
+            "Start Game" if is_host else "Wait for host to start game",
             on_click=partial(start_game, game_id=game_id, n_questions=N_QUESTIONS),
             disabled=not is_host,
             type="primary",
@@ -1560,8 +1560,14 @@ def reveal_screen(
                 delta=points,
             )
 
+
+    if is_host:
+        button_text = "Next question" if question_number < N_QUESTIONS else "Finish game"
+    else:
+        button_text = "wait for host to continue"
+
     st.button(
-        "Next question" if question_number < N_QUESTIONS else "Finish game",
+        button_text,
         type="primary",
         on_click=partial(
             next_question, game_id=game_id, question_number=question_number
