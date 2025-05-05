@@ -957,8 +957,8 @@ def has_accepted_cookies() -> bool:
     has_accepted_cookies = st.session_state.get(Var.has_accepted_cookies, False)
     if not has_accepted_cookies:
         cookie_controller = stx.CookieManager(key="cookie_allow_manager")  # key needs to be different from the one authenticator uses
-        has_accepted_cookies = cookie_controller.get(str(Var.has_accepted_cookies), False)
-    return has_accepted_cookies
+        has_accepted_cookies = cookie_controller.get(str(Var.has_accepted_cookies))
+    return bool(has_accepted_cookies)
 
 
 def accept_cookies() -> None:
