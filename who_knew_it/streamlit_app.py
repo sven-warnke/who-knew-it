@@ -1052,11 +1052,12 @@ def find_game_screen(player_id: str) -> None:
             all_players_in_game = get_all_players_in_game(game_id=open_game)
             with col_game_name:
                 st.button(
-                    f"{open_game}",
+                    f"Join game {open_game}",
                     on_click=partial(
                         join_game, player_id=player_id, game_id=open_game, is_host=False
                     ),
                     disabled=len(all_players_in_game) >= N_MAX_PLAYERS,
+                    type="primary",
                 )
             with col_players:
                 for player in all_players_in_game.values():
@@ -1199,7 +1200,7 @@ def answer_writing_screen(
         )
 
         st.button(
-            "Finish writing answers",
+            "Finish writing answers" if is_host else "Wait for host to continue",
             on_click=lambda: set_game_state(game_id=game_id, game_stage=GameStage.guessing),
             disabled=not all_answers_in or not is_host,
             type="primary",
