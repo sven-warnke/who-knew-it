@@ -967,6 +967,7 @@ def accept_cookies() -> None:
     st.session_state[Var.has_accepted_cookies] = True
 
 
+@st.dialog("Please accept cookies")
 def show_cookies_consent() -> None:
     st.checkbox(
         "Accept essential cookies", on_change=accept_cookies
