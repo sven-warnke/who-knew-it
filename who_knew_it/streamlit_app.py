@@ -67,6 +67,7 @@ class Var(enum.StrEnum):
     fooled_players = "fooled_players"
     dummy_cookie = "dummy_cookie"
     has_accepted_cookies = "has_accepted_cookies"
+    name = "name"  # used by streamlit authenticator
 
 
 class GameStage(enum.IntEnum):
@@ -975,83 +976,82 @@ def show_cookies_consent() -> None:
 
 
 def main():
-    st.text(st.session_state.get("name", "name not found"))
-
     if not has_accepted_cookies():
         show_cookies_consent()
     
     else:
 
         if authenticator.authenticated():
-            sql_editor_sidebar()
+            if st.session_state.get(Var.name) == "Admin":
+                sql_editor_sidebar()
 
-        create_tables_if_not_exist()
+            create_tables_if_not_exist()
 
-        player_id = determine_player_id()
-        game_id = determine_game_id()
-        if game_id is not None:
-            leave_if_not_in_game(
-                player_id=player_id,
-                game_id=game_id,
-                all_players=get_all_players_in_game(game_id=game_id),
-            )
+            player_id = determine_player_id()
+            game_id = determine_game_id()
+            if game_id is not None:
+                leave_if_not_in_game(
+                    player_id=player_id,
+                    game_id=game_id,
+                    all_players=get_all_players_in_game(game_id=game_id),
+                )
 
-        game_stage = determine_game_stage(game_id)
-        if game_stage is None:
-            st.info("The game was closed by the host.")
-            leave_game(player_id=player_id, game_id=game_id)
+            game_stage = determine_game_stage(game_id)
+            if game_stage is None:
+                st.info("The game was closed by the host.")
+                leave_game(player_id=player_id, game_id=game_id)
 
-        if game_stage == GameStage.no_game_selected:
-            find_game_screen(player_id=player_id)
-
-        else:
-            is_host = is_player_host(player_id=player_id, game_id=game_id)
-
-            if game_stage == GameStage.game_open:
-                open_game_screen(player_id=player_id, game_id=game_id, is_host=is_host)
-
-            elif game_stage == GameStage.finished:
-                finished_screen(player_id=player_id, game_id=game_id, is_host=is_host)
+            if game_stage == GameStage.no_game_selected:
+                find_game_screen(player_id=player_id)
 
             else:
-                question_number = determine_first_unanswered_question_number(
-                    game_id=game_id
-                )
-                print(f"question_number: {question_number}")
+                is_host = is_player_host(player_id=player_id, game_id=game_id)
 
-                if question_number is None:
-                    print("All questions answered.")
-                    set_game_state(game_id=game_id, game_stage=GameStage.finished)
-                    st.rerun()
+                if game_stage == GameStage.game_open:
+                    open_game_screen(player_id=player_id, game_id=game_id, is_host=is_host)
 
-                st.text(f"Question number: {question_number}/{N_QUESTIONS}")
+                elif game_stage == GameStage.finished:
+                    finished_screen(player_id=player_id, game_id=game_id, is_host=is_host)
 
-                match game_stage:
-                    case GameStage.answer_writing:
-                        answer_writing_screen(
-                            player_id=player_id,
-                            game_id=game_id,
-                            is_host=is_host,
-                            question_number=question_number,
-                        )
-                    case GameStage.guessing:
-                        guessing_screen(
-                            player_id=player_id,
-                            game_id=game_id,
-                            is_host=is_host,
-                            question_number=question_number,
-                        )
+                else:
+                    question_number = determine_first_unanswered_question_number(
+                        game_id=game_id
+                    )
+                    print(f"question_number: {question_number}")
 
-                    case GameStage.reveal:
-                        reveal_screen(
-                            player_id=player_id,
-                            game_id=game_id,
-                            is_host=is_host,
-                            question_number=question_number,
-                        )
+                    if question_number is None:
+                        print("All questions answered.")
+                        set_game_state(game_id=game_id, game_stage=GameStage.finished)
+                        st.rerun()
 
-                    case unreachable:
-                        raise ValueError(f"Found {unreachable}")
+                    st.text(f"Question number: {question_number}/{N_QUESTIONS}")
+
+                    match game_stage:
+                        case GameStage.answer_writing:
+                            answer_writing_screen(
+                                player_id=player_id,
+                                game_id=game_id,
+                                is_host=is_host,
+                                question_number=question_number,
+                            )
+                        case GameStage.guessing:
+                            guessing_screen(
+                                player_id=player_id,
+                                game_id=game_id,
+                                is_host=is_host,
+                                question_number=question_number,
+                            )
+
+                        case GameStage.reveal:
+                            reveal_screen(
+                                player_id=player_id,
+                                game_id=game_id,
+                                is_host=is_host,
+                                question_number=question_number,
+                            )
+
+                        case unreachable:
+                            raise ValueError(f"Found {unreachable}")
 
 
 def find_game_screen(player_id: str) -> None:
