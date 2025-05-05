@@ -975,6 +975,7 @@ def show_cookies_consent() -> None:
 
 
 def main():
+    st.text(st.session_state.get("name", "name not found"))
 
     if not has_accepted_cookies():
         show_cookies_consent()
