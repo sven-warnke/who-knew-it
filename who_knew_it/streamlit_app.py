@@ -1402,7 +1402,7 @@ def aggregate_house_points(player_points: dict[str, int]) -> dict[str, int]:
     return player_points
 
 
-def calculate_player_points(reveal_infos: list[RevealInfo]) -> dict[str, int]:
+def calculate_player_points(reveal_infos: list[RevealInfo], triple_points: bool) -> dict[str, int]:
 
     players_who_participated = {
         *{ri.player_id_of_author for ri in reveal_infos},
@@ -1422,6 +1422,17 @@ def calculate_player_points(reveal_infos: list[RevealInfo]) -> dict[str, int]:
     ]
     for player_id in correct_answer_info.player_ids_who_chose:
         player_points[player_id] += 1
+
+    if triple_points:
+        house_ids = [
+            player_id
+            for player_id in player_points.keys()
+            if is_house_player_id(player_id)
+        ]
+        for player_id in player_points.keys():
+            if player_id not in house_ids:
+                player_points[player_id] *= 3
+
     return player_points
 
 
@@ -1562,7 +1573,7 @@ def reveal_screen(
 
         st.divider()
 
-    player_points = calculate_player_points(reveal_infos=reveal_infos)
+    player_points = calculate_player_points(reveal_infos=reveal_infos, triple_points=question_number == N_QUESTIONS)
     if is_host:
         add_points(
             game_id=game_id,
