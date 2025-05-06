@@ -1560,7 +1560,7 @@ def reveal_screen(
             player_display_list = []
             for player in fooled_players:
 
-                color = get_display_color(some_player_id=player, current_player_id=player)
+                color = get_display_color(some_player_id=player, current_player_id=player_id)
                 badge_icon = get_badge_icon(some_player_id=player)
                 player_display_list.append(
                     f":{color}-badge[{badge_icon} {player_id_to_name[player]}]"
@@ -1577,7 +1577,7 @@ def reveal_screen(
         with st.expander(label=expander_visible):
             st.text(r_info.answer_text)
         
-        color = get_display_color(r_info.player_id_of_author, current_player_id=r_info.player_id_of_author)
+        color = get_display_color(r_info.player_id_of_author, current_player_id=player_id)
         badge_icon = get_badge_icon(some_player_id=r_info.player_id_of_author)
 
         is_correct_answer = r_info.player_id_of_author == CORRECT_ANSWER_ID
@@ -1600,12 +1600,13 @@ def reveal_screen(
     total_points = get_total_points(game_id=game_id)
     player_points = aggregate_house_points(player_points=player_points)
     total_points = aggregate_house_points(player_points=total_points)
-
+    
+    st.header("Points:")
     cols = st.columns(len(player_points))
     sorted_player_points_tuples = sorted(
         player_points.items(), key=lambda x: x[1], reverse=True
     )
-    st.header("Points:")
+    
     for col, (player, points) in zip(cols, sorted_player_points_tuples, strict=True):
         with col:
             st.metric(
