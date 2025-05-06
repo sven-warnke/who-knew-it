@@ -2,13 +2,13 @@
 
     "The Atomic Bull" = Endre Weibye
     "The Ballet Dancer" = Salamo Arouch
-    "Baby Jake" = Jacob Matlala South
+    "Baby Jake" = Jacob Matlala
     "Big Bad John" = John McDermott
     "Big George" = George Foreman
     "The Boxing Doctor" = Harold Reitman
     "The Bronx Beauty" = Al Singer
     "The Bionic Hand" = Gerrie Coetzee
-    "Chrysanthemum Joe" = Joe Choynski]
+    "Chrysanthemum Joe" = Joe Choynski
     "Dangerous" = Dana Rosenblatt
     "Fraudley" = Audley Harrison 
     "The Ghetto Midget" = Isadore Schwartz
@@ -16,13 +16,13 @@
     "Ghost of the Ghetto" = Sid Terris
     "The Human Hairpin" = Harry Harris
     "The Knob Hill Terror" = Monte Attell
-    "The Lion" = Lennox Lewis England
+    "The Lion" = Lennox Lewis
     "The Lion from Zion" = Roman Greenberg
-    "Little Fish" = Benny Bass United
+    "Little Fish" = Benny Bass
     "The Little Hebrew" = Abe Attell
     "Marvelous" = Marvin Hagler
     "The Newsboy" = Abraham Jacob Hollandersky
-    "Old Chocolate" = George Godfrey Canada
+    "Old Chocolate" = George Godfrey
     "La Petite Terreur" = Alphonse Halimi
     "Ruby the Jewel of the Ghetto" = Ruby Goldstein
     "Slapsie" = Maxie Rosenbloom
