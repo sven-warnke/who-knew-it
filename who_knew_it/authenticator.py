@@ -8,7 +8,7 @@ from yaml.loader import SafeLoader
 CREDENTIALS_FILE = pathlib.Path(__file__).parent.parent / "config.yaml"
 
 
-def authenticated() -> bool:
+def get_authenticator() -> stauth.Authenticate:
 
     with open(CREDENTIALS_FILE) as file:
         config = yaml.load(file, Loader=SafeLoader)
@@ -19,19 +19,5 @@ def authenticated() -> bool:
         config['cookie']['key'],
         config['cookie']['expiry_days']
     )
-    with st.sidebar:
-        if st.session_state.get('authentication_status'):
-            authenticator.logout()
-            return True
-        else:
-            try:
-                authenticator.login()
-            except Exception as e:
-                st.error(e)
 
-            if st.session_state.get('authentication_status') is False:
-                st.error('Username/password is incorrect')
-            else:
-                st.warning('Please enter admin credentials')
-
-    return False
+    return authenticator

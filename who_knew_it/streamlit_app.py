@@ -981,77 +981,76 @@ def main():
     
     else:
 
-        if authenticator.authenticated():
-            if st.session_state.get(Var.name) == "Admin":
-                sql_editor_sidebar()
+        if st.session_state.get(Var.name) == "Admin":
+            sql_editor_sidebar()
 
-            create_tables_if_not_exist()
+        create_tables_if_not_exist()
 
-            player_id = determine_player_id()
-            game_id = determine_game_id()
-            if game_id is not None:
-                leave_if_not_in_game(
-                    player_id=player_id,
-                    game_id=game_id,
-                    all_players=get_all_players_in_game(game_id=game_id),
-                )
+        player_id = determine_player_id()
+        game_id = determine_game_id()
+        if game_id is not None:
+            leave_if_not_in_game(
+                player_id=player_id,
+                game_id=game_id,
+                all_players=get_all_players_in_game(game_id=game_id),
+            )
 
-            game_stage = determine_game_stage(game_id)
-            if game_stage is None:
-                st.info("The game was closed by the host.")
-                leave_game(player_id=player_id, game_id=game_id)
+        game_stage = determine_game_stage(game_id)
+        if game_stage is None:
+            st.info("The game was closed by the host.")
+            leave_game(player_id=player_id, game_id=game_id)
 
-            if game_stage == GameStage.no_game_selected:
-                find_game_screen(player_id=player_id)
+        if game_stage == GameStage.no_game_selected:
+            find_game_screen(player_id=player_id)
+
+        else:
+            is_host = is_player_host(player_id=player_id, game_id=game_id)
+
+            if game_stage == GameStage.game_open:
+                open_game_screen(player_id=player_id, game_id=game_id, is_host=is_host)
+
+            elif game_stage == GameStage.finished:
+                finished_screen(player_id=player_id, game_id=game_id, is_host=is_host)
 
             else:
-                is_host = is_player_host(player_id=player_id, game_id=game_id)
+                question_number = determine_first_unanswered_question_number(
+                    game_id=game_id
+                )
+                print(f"question_number: {question_number}")
 
-                if game_stage == GameStage.game_open:
-                    open_game_screen(player_id=player_id, game_id=game_id, is_host=is_host)
+                if question_number is None:
+                    print("All questions answered.")
+                    set_game_state(game_id=game_id, game_stage=GameStage.finished)
+                    st.rerun()
 
-                elif game_stage == GameStage.finished:
-                    finished_screen(player_id=player_id, game_id=game_id, is_host=is_host)
+                st.text(f"Question number: {question_number}/{N_QUESTIONS}")
 
-                else:
-                    question_number = determine_first_unanswered_question_number(
-                        game_id=game_id
-                    )
-                    print(f"question_number: {question_number}")
+                match game_stage:
+                    case GameStage.answer_writing:
+                        answer_writing_screen(
+                            player_id=player_id,
+                            game_id=game_id,
+                            is_host=is_host,
+                            question_number=question_number,
+                        )
+                    case GameStage.guessing:
+                        guessing_screen(
+                            player_id=player_id,
+                            game_id=game_id,
+                            is_host=is_host,
+                            question_number=question_number,
+                        )
 
-                    if question_number is None:
-                        print("All questions answered.")
-                        set_game_state(game_id=game_id, game_stage=GameStage.finished)
-                        st.rerun()
+                    case GameStage.reveal:
+                        reveal_screen(
+                            player_id=player_id,
+                            game_id=game_id,
+                            is_host=is_host,
+                            question_number=question_number,
+                        )
 
-                    st.text(f"Question number: {question_number}/{N_QUESTIONS}")
-
-                    match game_stage:
-                        case GameStage.answer_writing:
-                            answer_writing_screen(
-                                player_id=player_id,
-                                game_id=game_id,
-                                is_host=is_host,
-                                question_number=question_number,
-                            )
-                        case GameStage.guessing:
-                            guessing_screen(
-                                player_id=player_id,
-                                game_id=game_id,
-                                is_host=is_host,
-                                question_number=question_number,
-                            )
-
-                        case GameStage.reveal:
-                            reveal_screen(
-                                player_id=player_id,
-                                game_id=game_id,
-                                is_host=is_host,
-                                question_number=question_number,
-                            )
-
-                        case unreachable:
-                            raise ValueError(f"Found {unreachable}")
+                    case unreachable:
+                        raise ValueError(f"Found {unreachable}")
 
 
 def find_game_screen(player_id: str) -> None:
@@ -1689,4 +1688,14 @@ def finished_screen(player_id: str, game_id: int, is_host: bool) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    auth = authenticator.get_authenticator()
+    if st.session_state.get('authentication_status'):
+        with st.sidebar:
+            auth.logout()
+        main()
+    else:
+        auth.login()
+        if st.session_state.get('authentication_status') is False:
+            st.error('Username/password is incorrect')
+        elif st.session_state.get('authentication_status') is None:
+            st.warning('Please enter your username and password')
