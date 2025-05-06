@@ -1105,6 +1105,13 @@ def find_game_screen(player_id: str) -> None:
     auto_refresh()
 
 
+
+def player_display_markdown(player_id: str, current_player_id: str, player_name:str) -> str:
+    color = get_display_color(some_player_id=player_id, current_player_id=current_player_id)
+    badge_icon = get_badge_icon(some_player_id=player_id)
+    return f":{color}-badge[{badge_icon} {player_name}]"
+
+
 def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
     player_name = get_player_name(player_id=player_id)
     st.title(f"You have joined game {game_id}")
@@ -1123,7 +1130,13 @@ def open_game_screen(player_id: str, game_id: int, is_host: bool) -> None:
     for p_id, p_name in all_players.items():
         cols = st.columns(2)
         with cols[0]:
-            st.text(p_name)
+            st.markdown(
+                player_display_markdown(
+                    player_id=p_id,
+                    current_player_id=player_id,
+                    player_name=p_name,
+                )
+            )
         if is_host and p_id != player_id:
             with cols[1]:
                 st.button(
@@ -1565,7 +1578,7 @@ def reveal_screen(
         with st.expander(label=expander_visible):
             st.text(r_info.answer_text)
         
-        color = get_display_color(r_info.player_id_of_author, current_player_id=player_id)
+        color = get_display_color(r_info.player_id_of_author, current_player_id=r_info.player_id_of_author)
         badge_icon = get_badge_icon(some_player_id=r_info.player_id_of_author)
 
         is_correct_answer = r_info.player_id_of_author == CORRECT_ANSWER_ID
