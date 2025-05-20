@@ -448,7 +448,11 @@ def join_game(player_id: str, game_id: int, is_host: bool) -> None:
 
 def remove_from_game(player_id: str, game_id: int) -> None:
     query = f"""
+    BEGIN TRANSACTION;
     DELETE FROM {Tables.game_player} WHERE {Var.player_id} = '{player_id}' AND {Var.game_id} = {game_id};
+    DELETE FROM {Tables.points} WHERE {Var.player_id} = '{player_id}' AND {Var.game_id} = {game_id};
+    DELETE FROM {Tables.player_answers} WHERE {Var.player_id} = '{player_id}' AND {Var.game_id} = {game_id};
+    COMMIT;
     """
     print("remove_from_game: ", query)
     with get_cursor() as con:
@@ -1013,6 +1017,7 @@ def main():
                 finished_screen(player_id=player_id, game_id=game_id, is_host=is_host)
 
             else:
+                st.button("Leave Game", on_click=lambda: leave_game(player_id=player_id, game_id=game_id))
                 question_number = determine_first_unanswered_question_number(
                     game_id=game_id
                 )
